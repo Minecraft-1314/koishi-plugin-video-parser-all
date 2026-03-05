@@ -329,9 +329,8 @@ function cleanUrl(url: string): string {
   try {
     url = url.replace(/&amp;/g, '&');
     const urlObj = new URL(url);
-    if (urlObj.hostname.includes('xiaohongshu.com')) {
-      urlObj.searchParams.forEach((_, key) => urlObj.searchParams.delete(key));
-      return urlObj.origin + urlObj.pathname;
+    if (urlObj.hostname.includes('xiaohongshu.com') || urlObj.hostname.includes('xhslink.com')) {
+      return urlObj.href;
     }
     if (urlObj.hostname.includes('douyin.com') || urlObj.hostname.includes('v.douyin.com')) {
       urlObj.searchParams.delete('source');
@@ -346,15 +345,17 @@ function cleanUrl(url: string): string {
 
 async function resolveShortUrl(url: string): Promise<string> {
   try {
-    const res = await axios.head(url, {
+    const res = await axios.get(url, {
       timeout: 10000,
       maxRedirects: 10,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Referer': 'https://www.baidu.com/',
-      }
+      },
+      validateStatus: status => true
     });
-    return cleanUrl(res.request.res?.responseUrl || url);
+    const finalUrl = res.request.res?.responseUrl || url;
+    return cleanUrl(finalUrl);
   } catch (e) {
     return cleanUrl(url);
   }
@@ -695,25 +696,16 @@ export function apply(ctx: Context, config: any) {
     let lastError: any = null;
     for (let i = 0; i <= retryTimes; i++) {
       try {
-        const params = { url, proxyurl: '' };
+        const params = { url };
         let res;
         if (platform === 'xiaohongshu') {
           res = await http.post(API_CONFIG[platform], new URLSearchParams(params), {
-            timeout: config.timeout,
-            headers: {
-              'X-Requested-With': 'XMLHttpRequest',
-              'Origin': 'https://api.bugpk.com',
-              'Content-Type': 'application/x-www-form-urlencoded'
-            }
+            timeout: config.timeout
           });
         } else {
           res = await http.get(API_CONFIG[platform], {
             params,
-            timeout: config.timeout,
-            headers: {
-              'X-Requested-With': 'XMLHttpRequest',
-              'Origin': 'https://www.baidu.com'
-            }
+            timeout: config.timeout
           });
         }
         return res.data;
@@ -788,7 +780,7 @@ export function apply(ctx: Context, config: any) {
   }
 
   async function processSingleUrl(session: any, url: string): Promise<ProcessResult> {
-    const hash = crypto.createHash('md5').update(url).digest('hex');
+    const hash = crypto.createHash('md5').update(url + Date.now().toString()).digest('hex');
     const now = Date.now();
     
     if (processed.get(hash) && now - processed.get(hash)! < config.sameLinkInterval * 1000) {
