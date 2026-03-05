@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-video-parser-all",
   "description": "Koishi 全平台视频解析插件，支持抖音/快手/B站/小红书/微博/今日头条/皮皮搞笑/皮皮虾/最右视频链接解析",
-  "version": "0.3.3",
+  "version": "0.7.0",  
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -23,6 +23,7 @@
     "card",
     "miniprogram",
     "bilibili",
+    "bv",
     "douyin",
     "kuaishou",
     "xiaohongshu",
@@ -30,7 +31,9 @@
     "toutiao",
     "pipigx",
     "pipixia",
-    "zuiyou"
+    "xigua",
+    "zuiyou",
+    "视频解析"
   ],
   "devDependencies": {
     "@koishijs/client": "^5.30.4",
