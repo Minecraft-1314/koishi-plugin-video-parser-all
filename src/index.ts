@@ -5,9 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 import { Worker, isMainThread, parentPort, workerData } from 'worker_threads';
-
 export const name = 'video-parser-all';
-
 export const Config = Schema.intersect([
   Schema.object({
     enable: Schema.boolean().default(true).description('是否启用视频解析插件'),
@@ -26,18 +24,7 @@ export const Config = Schema.intersect([
 收藏：${'${收藏数}'}
 转发：${'${转发数}'}
 播放：${'${播放数}'}
-评论：${'${评论数}'}
-IP属地：${'${IP属地}'}
-发布时间：${'${发布时间}'}
-粉丝数：${'${粉丝数}'}
-在线人数：${'${在线人数}'}
-关注数：${'${关注数}'}
-文件大小：${'${文件大小}'}
-直播间地址：${'${直播间地址}'}
-直播间ID：${'${直播间ID}'}
-直播间状态：${'${直播间状态}'}
-图片数量：${'${图片数量}'}
-作者ID：${'${作者ID}'}`).description('统一消息格式'),
+评论：${'${评论数}'}`).description('统一消息格式'),
   }).description('统一消息格式'),
   Schema.object({
     showImageText: Schema.boolean().default(true).description('显示图文内容'),
@@ -69,8 +56,7 @@ IP属地：${'${IP属地}'}
     autoClearCacheInterval: Schema.number().min(0).default(0).description('自动清理缓存间隔（分钟，0为关闭）'),
   }).description('缓存清理设置'),
 ]);
-
-type PlatformType = 'bilibili' | 'douyin' | 'kuaishou' | 'xiaohongshu' | 'weibo' | 'toutiao' | 'pipigx' | 'pipixia' | 'zuiyou';
+type PlatformType = 'bilibili' | 'douyin' | 'kuaishou' | 'weibo' | 'toutiao' | 'pipigx' | 'pipixia' | 'zuiyou';
 type ParseResultData = {
   type: 'video' | 'image' | 'live' | 'live_photo' | '图集' | 'cv';
   rawData: any;
@@ -122,15 +108,12 @@ type LinkBufferItem = {
   timer: NodeJS.Timeout;
   tipMsgId?: string | number;
 };
-
 const processed = new Map<string, number>();
 const linkBuffer = new Map<string, LinkBufferItem>();
 const logger = new Logger(name);
-
 const PLATFORM_KEYWORDS = {
   bilibili: ['bilibili', 'b23', 'B站', 'www.bilibili.com', 'm.bilibili.com', '哔哩哔哩', 'bilibili.com/opus', 'bilibili.com/video', 'b23.tv', 't.bilibili.com', 'bilibili.com/bangumi'],
   kuaishou: ['kuaishou', '快手', 'v.kuaishou.com', 'www.kuaishou.com', 'kwimgs.com', 'kuaishou.com/app'],
-  xiaohongshu: ['xiaohongshu', '小红书', 'xhslink.com', 'xiaohongshu.com', 'xhscdn.com', 'xiaohongshu.com/explore', 'xhslink.com/', 'xiaohongshu.com/discovery/item'],
   weibo: ['weibo', '微博', 'weibo.com', 'video.weibo.com', 'm.weibo.cn', 'weibo.com/tv/show', 'weibo.com/feed'],
   toutiao: ['toutiao', '今日头条', 'm.toutiao.com', 'toutiao.com', 'ixigua.com', 'toutiao.com/video', 'ixigua.com/i'],
   pipigx: ['pipigx', '皮皮搞笑', 'h5.pipigx.com', 'ippzone.com', 'pipigx.com/share'],
@@ -138,48 +121,43 @@ const PLATFORM_KEYWORDS = {
   douyin: ['douyin', '抖音', 'v.douyin.com', 'douyinpic.com', 'douyinvod.com', 'douyin.com/video', 'douyin.com/note', 'www.douyin.com', 'tiktok.com'],
   zuiyou: ['zuiyou', '最右', 'xiaochuankeji.cn', 'izuiyou.com', 'izuiyou.com/topic']
 };
-
 const API_CONFIG: Record<PlatformType, string> = {
   bilibili: 'https://api.xingzhige.com/API/b_parse',
   douyin: 'https://api.xingzhige.com/API/douyin/',
   kuaishou: 'https://api.bugpk.com/api/ksjx',
-  xiaohongshu: 'https://api.bugpk.com/api/xhsjx',
   weibo: 'https://api.bugpk.com/api/weibo',
   toutiao: 'https://api.bugpk.com/api/toutiao',
   pipigx: 'https://api.bugpk.com/api/pipigx',
   pipixia: 'https://api.bugpk.com/api/pipixia',
   zuiyou: 'https://api.bugpk.com/api/zuiyou'
 };
-
 const VARIABLE_MAPPING = {
-  '标题': ['title', 'note_title', 'content_title', 'item.title', 'data.title', 'video.title', 'live.title', 'data.item.title', 'data.live.title'],
-  '作者': ['author', 'author.name', 'name', 'nickname', 'user_name', 'owner.name', 'data.author', 'item.author', 'user.name', 'live.author', 'data.user.name', 'data.author.name'],
-  '简介': ['desc', 'description', 'content', 'note_desc', 'text', 'data.desc', 'item.description', 'live.desc', 'data.item.description'],
-  '视频时长': ['duration', 'time', 'video_duration', 'item.duration', 'stat.duration', 'data.item.duration'],
-  '点赞数': ['like', 'attitudes_count', 'digg_count', 'praise', 'stat.like', 'liked_count', 'data.like', 'data.attitudes_count', 'item.attitudes_count', 'data.item.attitudes_count'],
-  '投币数': ['coin', 'bi', 'stat.coin', 'stast.coin'],
-  '收藏数': ['collect', 'favorite', 'star', 'stat.collect', 'collected_count', 'stast.favorite', 'data.favorite'],
-  '转发数': ['share', 'forward', 'repost', 'stat.share', 'reposts_count', 'shared_count', 'stast.share', 'data.reposts_count', 'data.item.reposts_count'],
-  '播放数': ['view', 'play_count', 'play', 'stat.view', 'play_times', 'stast.view', 'data.play_count', 'item.play_count', 'data.item.play_count'],
-  '评论数': ['comment', 'comments_count', 'comment_count', 'discuss', 'stat.comment', 'stast.reply', 'data.comments_count', 'item.comments_count', 'data.item.comments_count', 'stat.reply'],
-  'IP属地': ['ip_info_str', 'data.ip_info_str', 'item.ip_info', 'data.item.ip_info_str'],
-  '发布时间': ['date', 'time', 'publish_time', 'data.date', 'item.publish_time', 'live.time', 'stast.publish_time', 'stat.time', 'data.time.publish_time', 'data.live.time', 'stat.ctime'],
-  '粉丝数': ['followers_count', 'data.followers_count', 'item.followers', 'author.fans', 'data.item.followers_count'],
-  '在线人数': ['online', 'data.online', 'live.online', 'room.online', 'data.live.online'],
-  '关注数': ['attention', 'data.attention', 'live.attention', 'stast.attention', 'data.live.attention'],
-  '文件大小': ['size', 'size_str', 'item.size', 'item.size_str', 'data.size', 'data.item.size_str'],
-  '直播间地址': ['room_url', 'live.room_url', 'data.room_url', 'live.url', 'data.live.room_url'],
-  '直播间ID': ['room_id', 'live.room_id', 'data.room_id', 'live.room_id', 'data.live.room_id'],
-  '直播间状态': ['status', 'live.status', 'data.status', 'room.status', 'data.live.status'],
-  '图片数量': ['count', 'data.count', 'item.count', 'images.length', 'data.images.length', 'data.item.count'],
-  '作者ID': ['userId', 'userID', 'author_id', 'data.userId', 'item.userID', 'author.mid', 'user.mid', 'data.item.userID', 'data.author_id', 'data.user.mid', 'author.id', 'uid', 'short_id', 'data.author.id']
+  '标题': ['title', 'note_title', 'content_title', 'item.title', 'data.title', 'video.title', 'live.title', 'data.item.title', 'data.live.title', 'data.note.title', 'data.video_info.title', 'data.aweme_info.title', 'data.video_data.title', 'data.post_title', 'data.article_title', 'data.video_title', 'data.work_title', 'data.media_title', 'data.caption'],
+  '作者': ['author', 'author.name', 'name', 'nickname', 'user_name', 'owner.name', 'data.author', 'item.author', 'user.name', 'live.author', 'data.user.name', 'data.author.name', 'data.note.author', 'data.user', 'data.user_info', 'data.owner_info', 'data.creator', 'data.username', 'data.author_name', 'data.user_nickname', 'data.publisher', 'data.uploader'],
+  '简介': ['desc', 'description', 'content', 'note_desc', 'text', 'data.desc', 'item.description', 'live.desc', 'data.item.description', 'data.note.desc', 'data.caption', 'data.detail', 'data.intro', 'data.introduce', 'data.summary', 'data.video_desc', 'data.post_content', 'data.article_content'],
+  '视频时长': ['duration', 'time', 'video_duration', 'item.duration', 'stat.duration', 'data.item.duration', 'data.video_duration', 'data.video_time', 'data.play_time', 'data.length', 'data.video_length'],
+  '点赞数': ['like', 'attitudes_count', 'digg_count', 'praise', 'stat.like', 'liked_count', 'data.like', 'data.attitudes_count', 'item.attitudes_count', 'data.item.attitudes_count', 'data.like_count', 'data.likes', 'data.praise_count', 'data.digg', 'data.favorited_count', 'data.love_count', 'data.up_count', 'data.zan'],
+  '投币数': ['coin', 'bi', 'stat.coin', 'stast.coin', 'data.coin', 'data.coin_num', 'data.coin_count'],
+  '收藏数': ['collect', 'favorite', 'star', 'stat.collect', 'collected_count', 'stast.favorite', 'data.favorite', 'data.collect_count', 'data.collection_count', 'data.star_count', 'data.bookmark_count', 'data.fav_count', 'data.save_count'],
+  '转发数': ['share', 'forward', 'repost', 'stat.share', 'reposts_count', 'shared_count', 'stast.share', 'data.reposts_count', 'data.item.reposts_count', 'data.share_count', 'data.forward_count', 'data.repost_count'],
+  '播放数': ['view', 'play_count', 'play', 'stat.view', 'play_times', 'stast.view', 'data.play_count', 'item.play_count', 'data.item.play_count', 'data.view_count', 'data.views', 'data.play_num', 'data.watch_count', 'data.video_play_count'],
+  '评论数': ['comment', 'comments_count', 'comment_count', 'discuss', 'stat.comment', 'stast.reply', 'data.comments_count', 'item.comments_count', 'data.item.comments_count', 'stat.reply', 'data.comment_num', 'data.reply_count', 'data.review_count'],
+  'IP属地': ['ip', 'ip_info', 'ip_location', 'ip_info_str', 'data.ip_info_str', 'item.ip', 'item.ip_info', 'data.item.ip_info_str', 'data.user_ip', 'data.location', 'data.region', 'data.area', 'data.addr'],
+  '发布时间': ['date', 'time', 'publish_time', 'create_time', 'ctime', 'pubdate', 'data.date', 'item.publish_time', 'live.time', 'stast.publish_time', 'stat.time', 'data.time.publish_time', 'data.live.time', 'stat.ctime', 'data.upload_time', 'data.post_time', 'data.create_date', 'data.pub_time', 'data.timestamp'],
+  '粉丝数': ['fans', 'fans_count', 'follower', 'followers', 'follower_count', 'followers_count', 'data.followers_count', 'item.followers', 'author.fans', 'data.item.followers_count', 'data.user_fans', 'data.fan_num'],
+  '在线人数': ['online', 'online_count', 'data.online', 'live.online', 'room.online', 'data.live.online', 'data.watching', 'data.viewer_count', 'data.audience_count'],
+  '关注数': ['follow', 'follow_count', 'attention', 'data.attention', 'live.attention', 'stast.attention', 'data.live.attention', 'data.following_count', 'data.follow_num'],
+  '文件大小': ['size', 'size_str', 'item.size', 'item.size_str', 'data.size', 'data.item.size_str', 'data.file_size', 'data.video_size', 'data.vid_size'],
+  '直播间地址': ['room_url', 'live.room_url', 'data.room_url', 'live.url', 'data.live.room_url', 'data.room_link', 'data.live_url', 'data.stream_url'],
+  '直播间ID': ['room_id', 'live.room_id', 'data.room_id', 'live.room_id', 'data.live.room_id', 'data.live_id', 'data.stream_id'],
+  '直播间状态': ['status', 'live_status', 'live.status', 'data.status', 'room.status', 'data.live.status', 'data.stream_status', 'data.room_status'],
+  '图片数量': ['count', 'img_count', 'image_count', 'pic_count', 'data.count', 'item.count', 'images.length', 'data.images.length', 'data.item.count', 'data.pic_num', 'data.img_num'],
+  '作者ID': ['uid', 'userid', 'user_id', 'userId', 'userID', 'author_id', 'data.userId', 'item.userID', 'author.mid', 'user.mid', 'data.item.userID', 'data.author_id', 'data.user.mid', 'author.id', 'short_id', 'data.author.id', 'data.uid', 'data.mid', 'data.open_id', 'data.account_id']
 };
-
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
 }
-
 async function getFileSize(url: string, userAgent: string): Promise<number> {
   try {
     const response = await axios.head(url, {
@@ -195,7 +173,6 @@ async function getFileSize(url: string, userAgent: string): Promise<number> {
   } catch (error) {}
   return 0;
 }
-
 async function downloadVideoThread(workerData: any) {
   return new Promise((resolve, reject) => {
     const worker = new Worker(__filename, { workerData });
@@ -206,7 +183,6 @@ async function downloadVideoThread(workerData: any) {
     });
   });
 }
-
 if (!isMainThread) {
   const { url, start, end, filename, userAgent } = workerData;
   const filePath = path.join(process.cwd(), 'temp_videos', `${filename}_${start}_${end}.part`);
@@ -232,7 +208,6 @@ if (!isMainThread) {
     parentPort?.postMessage({ success: false, error: error.message });
   });
 }
-
 async function downloadVideo(url: string, filename: string, userAgent: string, maxSize: number, threads: number): Promise<{ filePath: string; success: boolean }> {
   const dir = path.join(process.cwd(), 'temp_videos');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -297,7 +272,6 @@ async function downloadVideo(url: string, filename: string, userAgent: string, m
     return { filePath: '', success: false };
   }
 }
-
 function extractUrl(content: string): string[] {
   let urlMatches = content.match(/https?:\/\/[^\s\"\'\>]+/gi) as string[] || [];
   return urlMatches.filter(url => {
@@ -305,17 +279,14 @@ function extractUrl(content: string): string[] {
     return Object.values(PLATFORM_KEYWORDS).some(group => group.some(keyword => lower.includes(keyword)));
   });
 }
-
 function hasPlatformKeyword(content: string): boolean {
   const lower = content.toLowerCase();
   return Object.values(PLATFORM_KEYWORDS).some(group => group.some(keyword => lower.includes(keyword)));
 }
-
 function getPlatformType(url: string): PlatformType | null {
   const lower = url.toLowerCase();
   if (PLATFORM_KEYWORDS.bilibili.some(k => lower.includes(k))) return 'bilibili';
   if (PLATFORM_KEYWORDS.kuaishou.some(k => lower.includes(k))) return 'kuaishou';
-  if (PLATFORM_KEYWORDS.xiaohongshu.some(k => lower.includes(k))) return 'xiaohongshu';
   if (PLATFORM_KEYWORDS.weibo.some(k => lower.includes(k))) return 'weibo';
   if (PLATFORM_KEYWORDS.toutiao.some(k => lower.includes(k))) return 'toutiao';
   if (PLATFORM_KEYWORDS.pipigx.some(k => lower.includes(k))) return 'pipigx';
@@ -324,14 +295,10 @@ function getPlatformType(url: string): PlatformType | null {
   if (PLATFORM_KEYWORDS.zuiyou.some(k => lower.includes(k))) return 'zuiyou';
   return null;
 }
-
 function cleanUrl(url: string): string {
   try {
     url = url.replace(/&amp;/g, '&');
     const urlObj = new URL(url);
-    if (urlObj.hostname.includes('xiaohongshu.com') || urlObj.hostname.includes('xhslink.com')) {
-      return urlObj.href;
-    }
     if (urlObj.hostname.includes('douyin.com') || urlObj.hostname.includes('v.douyin.com')) {
       urlObj.searchParams.delete('source');
       urlObj.searchParams.delete('share_type');
@@ -342,7 +309,6 @@ function cleanUrl(url: string): string {
     return url.replace(/&amp;/g, '&').replace(/\?.*/, '');
   }
 }
-
 async function resolveShortUrl(url: string): Promise<string> {
   try {
     const res = await axios.get(url, {
@@ -360,7 +326,6 @@ async function resolveShortUrl(url: string): Promise<string> {
     return cleanUrl(url);
   }
 }
-
 function formatDuration(input: number | string): string {
   if (!input || input === 0 || input === '0' || input === '00:00') return '00:00:00';
   if (typeof input === 'string') {
@@ -379,23 +344,18 @@ function formatDuration(input: number | string): string {
   const secs = Math.floor(seconds % 60);
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
-
 function formatPublishTime(value: any): string {
   if (!value) return '';
   const str = String(value).trim();
-  
   if (value === 'ctime') return '';
-  
   if (/^\d{10}$/.test(str)) {
     value = Number(str) * 1000;
   }
-  
   if (/^\d{10,}$/.test(str) && Number(str) > 1e12) {
     if (Number(str) > 1e15) {
       value = Number(str) / 1000;
     }
   }
-  
   try {
     const d = new Date(/^\d+$/.test(str) ? Number(str) : str);
     if (isNaN(d.getTime())) return str;
@@ -414,7 +374,6 @@ function formatPublishTime(value: any): string {
     return str;
   }
 }
-
 function getNestedValue(obj: any, path: string): any {
   if (!obj || typeof obj !== 'object' || !path) return undefined;
   const keys = path.split('.');
@@ -425,7 +384,6 @@ function getNestedValue(obj: any, path: string): any {
   }
   return value;
 }
-
 function findValueInObject(obj: any, keys: string[]): any {
   if (!obj || typeof obj !== 'object' || !keys || keys.length === 0) return undefined;
   for (const key of keys) {
@@ -445,18 +403,13 @@ function findValueInObject(obj: any, keys: string[]): any {
   }
   return undefined;
 }
-
 function parseData(rawResponse: any, maxDescLength: number): ParseResultData {
   const root = rawResponse || {};
-  const data = root.data || root.result || root || {};
-  
+  const data = root.data || root;
   const stat: Record<string, any> = {};
-  
   let totalImageCount = 0;
-  
   Object.entries(VARIABLE_MAPPING).forEach(([varName, keys]) => {
     let value = findValueInObject(data, keys) || findValueInObject(root, keys);
-    
     if (varName === '图片数量' && value === undefined) {
       let imgCount = 0;
       const imgSources = [
@@ -464,129 +417,69 @@ function parseData(rawResponse: any, maxDescLength: number): ParseResultData {
         root.images, root.pics, root.pic_urls, root.image_list, root.imgurl,
         data.item?.images
       ];
-      
       for (const source of imgSources) {
         if (Array.isArray(source) && source.length > 0) {
           imgCount = source.filter(i => i && typeof i === 'string').length;
           break;
         }
       }
-      
       totalImageCount = imgCount;
-      
-      const cover = data.cover || data.video?.fm || data.imgurl || data.pic || data.thumbnail || data.cover_url || 
-                   data.item?.cover || root.cover || data.live?.cover || data.live?.keyframe || '';
-      
+      const cover = data.cover || data.video?.fm || data.imgurl || data.pic || data.thumbnail || data.cover_url ||
+                     data.item?.cover || root.cover || data.live?.cover || data.live?.keyframe || '';
       if (cover && imgCount > 0) {
-        imgCount = imgSources.find(source => Array.isArray(source))?.filter(i => 
+        imgCount = imgSources.find(source => Array.isArray(source))?.filter(i =>
           i && typeof i === 'string' && i !== cover
         ).length || 0;
       }
-      
       value = totalImageCount;
     }
-    
     if (value !== undefined && value !== null && value !== '' && value !== 0) {
       stat[varName] = value;
     }
   });
-
   let type = 'video';
-  
   if (data.jx?.type) type = data.jx.type;
   else if (data.type) type = data.type;
   else if (root.msg === 'cv') type = 'cv';
   else if (root.msg === 'live') type = 'live';
-  else if ((data.images && data.images.length > 1) || (root.images && root.images.length > 1) || 
+  else if ((data.images && data.images.length > 1) || (root.images && root.images.length > 1) ||
            (data.imgurl && data.imgurl.length > 1) || (root.imgurl && root.imgurl.length > 1)) type = '图集';
-
-  const title = stat['标题'] || data.note_title || data.title || data.content_title || data.video?.title || 
-               data.item?.title || root.title || data.live?.title || '无标题';
-  
-  let author = stat['作者'] || data.author?.name || data.nickname || data.user_name || data.owner?.name ||
-               data.item?.author || root.author || data.user?.name || data.live?.author || '';
-  if (typeof author === 'object') {
-    author = '';
+  const title = data.title || '无标题';
+  let author = '';
+  if (data.author && typeof data.author === 'object') {
+    author = data.author.name || '';
   } else {
-    author = author || '未知作者';
+    author = data.author || '';
   }
-
-  const rawDesc = stat['简介'] || data.note_desc || data.content || data.text || data.description || 
-                 data.video?.desc || data.item?.description || root.desc || root.description || 
-                 data.live?.desc || (title !== '无标题' ? title : '') || '暂无简介';
-  const desc = rawDesc.length > 0 ? rawDesc.slice(0, maxDescLength) : '暂无简介';
-
-  const cover = data.cover || data.video?.fm || data.imgurl || data.pic || data.thumbnail || data.cover_url || 
-               data.item?.cover || root.cover || data.live?.cover || data.live?.keyframe ||
-               (Array.isArray(data.images) && data.images[0]) || 
-               (Array.isArray(root.images) && root.images[0]) || 
-               (Array.isArray(data.imgurl) && data.imgurl[0]) || '';
-
-  let images: string[] = [];
-  const imgSources = [
-    data.images, data.pics, data.pic_urls, data.image_list, data.imgurl,
-    root.images, root.pics, root.pic_urls, root.image_list, root.imgurl,
-    data.item?.images
-  ];
-  
-  for (const source of imgSources) {
-    if (Array.isArray(source) && source.length > 0) {
-      images = source.filter(i => 
-        i && typeof i === 'string' && i !== cover
-      );
-      break;
-    }
-  }
-
-  let video = data.video?.url || data.url || data.download_url || data.playUrl || 
-             data.video_url || root.url || data.item?.url || data.live?.url || 
-             (data.live?.url && Array.isArray(data.live.url) ? data.live.url[0] : '') || '';
-
-  const durationValue = stat['视频时长'] || data.item?.duration || data.duration || 0;
+  author = author || '未知作者';
+  const rawDesc = data.desc || data.content || '暂无简介';
+  const desc = rawDesc.slice(0, maxDescLength);
+  const cover = data.cover || '';
+  const images = Array.isArray(data.images) ? data.images : [];
+  const video = data.url || data.video_backup || '';
+  const durationValue = data.duration || 0;
   const duration = typeof durationValue === 'number' ? durationValue : parseInt(durationValue) || 0;
   const durationFormatted = formatDuration(durationValue);
-
-  const pubTime = formatPublishTime(stat['发布时间']);
+  const pubTime = formatPublishTime(data.create_time || data.publish_time);
   if (pubTime) stat['发布时间'] = pubTime;
-  else delete stat['发布时间'];
-
-  if (durationFormatted !== '00:00:00') {
-    stat['视频时长'] = durationFormatted;
-  } else {
-    delete stat['视频时长'];
-  }
-
-  if (stat['图片数量'] === 0) {
-    delete stat['图片数量'];
-  }
-
-  const sizeVal = stat['文件大小'];
-  if (sizeVal && !String(sizeVal).includes('MB')) {
-    const num = Number(sizeVal);
-    if (!isNaN(num) && num > 0) stat['文件大小'] = `${num.toFixed(2)} MB`;
-  }
-
-  const live_photo = data.live_photo || root.live_photo || [];
-  const h_w = data.item?.h_w || root.h_w || [];
-  const quality_urls = data.quality_urls || root.quality_urls || {};
-  const default_quality = data.default_quality || root.default_quality || '';
-  const download_url = data.download_url || video;
-  const play_count = stat['播放数'] || data.play_count || root.play_count || '';
-  const reposts_count = Number(stat['转发数']) || data.reposts_count || root.reposts_count || 0;
-  const attitudes_count = Number(stat['点赞数']) || data.attitudes_count || root.attitudes_count || data.like || root.like || 0;
-  const comments_count = Number(stat['评论数']) || data.comments_count || root.comments_count || 0;
-
+  if (durationFormatted !== '00:00:00') stat['视频时长'] = durationFormatted;
+  if (stat['图片数量'] === 0) delete stat['图片数量'];
+  const live_photo = data.live_photo || [];
+  const h_w = data.item?.h_w || [];
+  const quality_urls = data.quality_urls || {};
+  const default_quality = data.default_quality || '';
+  const download_url = video;
+  const play_count = stat['播放数'] || '';
+  const reposts_count = Number(stat['转发数']) || 0;
+  const attitudes_count = Number(stat['点赞数']) || 0;
+  const comments_count = Number(stat['评论数']) || 0;
   if (data.live) {
     stat['直播间地址'] = data.live.room_url || '';
     stat['直播间ID'] = data.live.room_id || '';
-    stat['直播间状态'] = data.live.status === 1 ? '直播中' : (data.live.status === 0 ? '未开播' : data.live.status || '未知');
+    stat['直播间状态'] = data.live.status === 1 ? '直播中' : (data.live.status === 0 ? '未开播' : '未知');
     stat['在线人数'] = data.live.online || '';
     stat['关注数'] = data.live.attention || '';
   }
-
-  if (data.followers_count) stat['粉丝数'] = data.followers_count;
-  if (data.ip_info_str) stat['IP属地'] = data.ip_info_str;
-
   return {
     type: type as any,
     rawData: rawResponse,
@@ -612,7 +505,6 @@ function parseData(rawResponse: any, maxDescLength: number): ParseResultData {
     comments_count
   };
 }
-
 function generateFormattedText(parseData: ParseResultData, config: any): string {
   let format = config.unifiedMessageFormat || '';
   if (!format) {
@@ -627,14 +519,11 @@ function generateFormattedText(parseData: ParseResultData, config: any): string 
 播放：${'${播放数}'}
 评论：${'${评论数}'}`;
   }
-  
   let result = format;
   const varMatches: string[] = result.match(/\$\{([^}]+)\}/g) || [];
-  
   varMatches.forEach((varMatch: string) => {
     const varName = varMatch.replace(/\$\{|\}/g, '');
     const value = parseData.stat[varName];
-    
     if (value === undefined || value === null || value === '') {
       const lines = result.split('\n');
       result = lines.filter((line: string) => !line.includes(varMatch)).join('\n');
@@ -642,10 +531,10 @@ function generateFormattedText(parseData: ParseResultData, config: any): string 
       result = result.replace(varMatch, String(value));
     }
   });
-  
-  return result.trim() || `标题：${parseData.title}\n作者：${parseData.author}\n简介：${parseData.desc}`;
+  return result.trim() || `标题：${parseData.title}
+作者：${parseData.author}
+简介：${parseData.desc}`;
 }
-
 function clearAllCache(): boolean {
   processed.clear();
   linkBuffer.forEach(buf => clearTimeout(buf.timer));
@@ -660,9 +549,7 @@ function clearAllCache(): boolean {
   }
   return true;
 }
-
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 function buildForwardNode(session: any, content: any, botName: string) {
   let messageContent: any[];
   if (Array.isArray(content)) {
@@ -679,10 +566,8 @@ function buildForwardNode(session: any, content: any, botName: string) {
     }
   }, messageContent);
 }
-
 export function apply(ctx: Context, config: any) {
   clearAllCache();
-  
   const http: AxiosInstance = axios.create({
     timeout: config.timeout,
     headers: {
@@ -691,23 +576,15 @@ export function apply(ctx: Context, config: any) {
       'Content-Type': 'application/x-www-form-urlencoded'
     }
   });
-
   async function parseWithRetry(url: string, platform: PlatformType, retryTimes: number): Promise<any> {
     let lastError: any = null;
     for (let i = 0; i <= retryTimes; i++) {
       try {
         const params = { url };
-        let res;
-        if (platform === 'xiaohongshu') {
-          res = await http.post(API_CONFIG[platform], new URLSearchParams(params), {
-            timeout: config.timeout
-          });
-        } else {
-          res = await http.get(API_CONFIG[platform], {
-            params,
-            timeout: config.timeout
-          });
-        }
+        const res = await http.get(API_CONFIG[platform], {
+          params,
+          timeout: config.timeout
+        });
         return res.data;
       } catch (error) {
         lastError = error;
@@ -718,41 +595,33 @@ export function apply(ctx: Context, config: any) {
     }
     throw lastError;
   }
-
   async function parse(url: string): Promise<ParseResult> {
     let realUrl = await resolveShortUrl(url);
     realUrl = cleanUrl(realUrl);
-    
     const platform = getPlatformType(realUrl);
     if (!platform) {
       logger.error(`不支持的平台链接: ${url}`);
       return { data: null, success: false, msg: '不支持该平台链接' };
     }
-
     const apiUrl = API_CONFIG[platform];
     if (!apiUrl) {
       logger.error(`该平台暂未配置解析接口: ${platform}`);
       return { data: null, success: false, msg: '该平台暂未配置解析接口' };
     }
-
     try {
       const resData = await parseWithRetry(realUrl, platform, config.retryTimes);
-      
       if (!resData || Object.keys(resData).length === 0) {
         logger.error(`API返回空数据: ${url}`);
         return { data: null, success: false, msg: '解析失败，API返回空数据' };
       }
-
       const isSuccess = resData.code === 0 || resData.code === 200 || resData.code === 1 ||
                        (resData.msg && (resData.msg.includes('解析成功') || resData.msg.includes('success') || resData.msg.includes('请求成功') || resData.msg === 'video' || resData.msg === 'cv' || resData.msg === 'live')) ||
                        !!resData.data || !!resData.result || !!resData.video || !!resData.images || !!resData.imgurl;
-
       if (!isSuccess) {
         const apiErrorMsg = resData.msg || resData.error || '解析失败';
         logger.error(`API返回错误: ${url} - ${apiErrorMsg}`);
         return { data: null, success: false, msg: `解析失败: ${apiErrorMsg}` };
       }
-
       try {
         const parseResult = parseData(resData, config.maxDescLength);
         logger.info(`解析成功: ${url}`);
@@ -778,24 +647,18 @@ export function apply(ctx: Context, config: any) {
       return { data: null, success: false, msg };
     }
   }
-
   async function processSingleUrl(session: any, url: string): Promise<ProcessResult> {
-    const hash = crypto.createHash('md5').update(url + Date.now().toString()).digest('hex');
+    const hash = crypto.createHash('md5').update(url).digest('hex');
     const now = Date.now();
-    
     if (processed.get(hash) && now - processed.get(hash)! < config.sameLinkInterval * 1000) {
       logger.warn(`相同链接重复解析: ${url}`);
       return { data: null, success: false, msg: '请勿重复解析相同链接' };
     }
-    
     processed.set(hash, now);
     const result = await parse(url);
-    
     if (!result.success) return { data: null, success: false, msg: result.msg };
-    
     const parseData = result.data!;
     const text = generateFormattedText(parseData, config);
-    
     return {
       data: {
         text,
@@ -814,7 +677,6 @@ export function apply(ctx: Context, config: any) {
       msg: '处理成功'
     };
   }
-
   async function sendTimeout(session: any, content: any) {
     if (config.videoSendTimeout <= 0) {
       return session.send(content).catch((err: Error) => {
@@ -824,7 +686,6 @@ export function apply(ctx: Context, config: any) {
         return null;
       });
     }
-    
     return Promise.race([
       session.send(content),
       new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), config.videoSendTimeout))
@@ -835,20 +696,16 @@ export function apply(ctx: Context, config: any) {
       return null;
     });
   }
-
   async function flush(session: any, manualUrls?: string[]) {
     const key = `${session.platform}:${session.userId}:${session.channelId}`;
     const buffer = linkBuffer.get(key);
     const urls = manualUrls || buffer?.urls || [];
-    
     if (buffer) {
       clearTimeout(buffer.timer);
       linkBuffer.delete(key);
     }
-    
     const items: any[] = [];
     const errors: any[] = [];
-    
     for (const url of urls) {
       const result = await processSingleUrl(session, url);
       if (result.success) {
@@ -857,32 +714,26 @@ export function apply(ctx: Context, config: any) {
         errors.push({ url, msg: result.msg });
       }
     }
-    
     if (errors.length > 0) {
       const errorLines = errors.map(err => `【${err.url.slice(0, 50)}${err.url.length > 50 ? '...' : ''}】: ${err.msg}`);
       const errorMsg = `❌ 解析失败：\n${errorLines.join('\n')}`;
       await sendTimeout(session, errorMsg);
       await delay(500);
     }
-    
     if (items.length === 0) {
       await sendTimeout(session, '⚠ 未解析到有效内容');
       return;
     }
-    
     const enableForward = config.enableForward && session.platform === 'onebot';
     const forwardMessages: any[] = [];
     const botName = config.botName || '视频解析机器人';
-    
     for (const item of items) {
       try {
         if (enableForward) {
           if (item.text) forwardMessages.push(buildForwardNode(session, item.text, botName));
-          
           if (item.cover && item.type !== '图集') {
             forwardMessages.push(buildForwardNode(session, h.image(item.cover), botName));
           }
-          
           if (item.video && config.showVideoFile) {
             try {
               if (config.downloadVideoBeforeSend) {
@@ -900,10 +751,8 @@ export function apply(ctx: Context, config: any) {
               forwardMessages.push(buildForwardNode(session, h.video(item.video), botName));
             }
           }
-          
           if ((item.type === '图集' || item.type === 'image') && item.images?.length) {
             forwardMessages.push(buildForwardNode(session, `📸 图集内容（共${item.totalImageCount}张）`, botName));
-            
             for (const img of item.images) {
               forwardMessages.push(buildForwardNode(session, h.image(img), botName));
             }
@@ -913,12 +762,10 @@ export function apply(ctx: Context, config: any) {
             await sendTimeout(session, item.text);
             await delay(300);
           }
-          
           if (item.cover && item.type !== '图集') {
             await sendTimeout(session, h.image(item.cover));
             await delay(300);
           }
-          
           if (item.video && config.showVideoFile) {
             try {
               await sendTimeout(session, h.video(item.video));
@@ -927,11 +774,9 @@ export function apply(ctx: Context, config: any) {
             }
             await delay(500);
           }
-          
           if ((item.type === '图集' || item.type === 'image') && item.images?.length) {
             await sendTimeout(session, `📸 图集内容（共${item.totalImageCount}张）`);
             await delay(300);
-            
             for (const img of item.images) {
               await sendTimeout(session, h.image(img));
               await delay(200);
@@ -942,7 +787,6 @@ export function apply(ctx: Context, config: any) {
         logger.error(`处理消息发送失败: ${getErrorMessage(e)}`);
       }
     }
-    
     if (enableForward && forwardMessages.length) {
       try {
         await sendTimeout(session, h('message', { forward: true }, forwardMessages.slice(0, 100)));
@@ -954,19 +798,14 @@ export function apply(ctx: Context, config: any) {
       }
     }
   }
-
   ctx.on('message', async (session) => {
     if (!config.enable) return;
-    
     const content = session.content?.trim() || '';
     const urls = extractUrl(content);
-    
     if (!urls.length) return;
-    
     if (config.showWaitingTip) await sendTimeout(session, config.waitingTipText);
     await flush(session, urls);
   });
-
   ctx.command('parse <url>', '手动解析视频').action(async ({ session }, url) => {
     const us = extractUrl(url);
     if (!us.length) {
@@ -975,23 +814,19 @@ export function apply(ctx: Context, config: any) {
     }
     await flush(session, us);
   });
-
   ctx.command('clear-cache', '清空缓存').action(async ({ session }) => {
     clearAllCache();
     await sendTimeout(session, '✅ 缓存已清空');
   });
-
   setInterval(() => {
     const now = Date.now();
     processed.forEach((t, h) => now - t > 86400000 && processed.delete(h));
   }, 3600000);
-
   if (config.autoClearCacheInterval > 0) {
     setInterval(() => {
       clearAllCache();
       logger.info('自动清理缓存完成');
     }, config.autoClearCacheInterval * 60 * 1000);
   }
-
   logger.info('视频解析插件已启动');
 }

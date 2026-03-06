@@ -3,7 +3,7 @@
 ## 项目介绍 (Project Introduction)
 
 ### 中文
-这是一个为 Koishi 机器人框架开发的**多平台视频/图集解析插件**，支持自动识别并解析抖音、快手、B站、小红书、微博、今日头条、皮皮搞笑、皮皮虾、最右等主流平台的短视频/图集链接。核心特性：
+这是一个为 Koishi 机器人框架开发的**多平台视频/图集解析插件**，支持自动识别并解析抖音、快手、B站、微博、今日头条、皮皮搞笑、皮皮虾、最右等主流平台的短视频/图集链接。核心特性：
 - 🚀 自动识别多平台链接，无需手动指定平台
 - 🎨 自定义解析结果格式，支持丰富的变量替换
 - ⚡ 内置防重复解析、接口重试、自动缓存清理等实用功能
@@ -119,7 +119,6 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | 哔哩哔哩 (B站) | bilibili、b23、B站 | 视频、番剧、直播、图集 |
 | 抖音 | douyin、v.douyin.com | 短视频、图集、直播 |
 | 快手 | kuaishou、v.kuaishou.com | 短视频、图集 |
-| 小红书 | xiaohongshu、xhslink.com | 笔记、图集、视频 |
 | 微博 | weibo、video.weibo.com | 视频、图集 |
 | 今日头条 | toutiao、ixigua.com | 短视频 |
 | 皮皮搞笑 | pipigx、h5.pipigx.com | 短视频 |
