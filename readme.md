@@ -116,8 +116,8 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 ## 支持的平台 (Supported Platforms)
 | 平台名称 | 关键词识别 | 解析能力 |
 |----------|------------|----------|
-| 哔哩哔哩 (B站) | bilibili、b23、B站 | 视频、番剧、直播、图集 |
-| 抖音 | douyin、v.douyin.com | 短视频、图集、直播 |
+| 哔哩哔哩 (B站) | bilibili、b23、B站 | 视频、直播 |
+| 抖音 | douyin、v.douyin.com | 短视频、图集 |
 | 快手 | kuaishou、v.kuaishou.com | 短视频、图集 |
 | 微博 | weibo、video.weibo.com | 视频、图集 |
 | 今日头条 | toutiao、ixigua.com | 短视频 |
