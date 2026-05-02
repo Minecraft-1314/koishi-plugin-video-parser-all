@@ -1,6 +1,5 @@
 import { Context, Schema, h, Logger } from 'koishi';
 import axios, { AxiosInstance } from 'axios';
-import path from 'path';
 
 export const name = 'video-parser-all';
 
@@ -15,7 +14,7 @@ export const Config = Schema.intersect([
   Schema.object({
     unifiedMessageFormat: Schema.string().role('textarea').default(
       `\${标题}\n\${作者}\n\${简介}\n点赞：\${点赞数}\n收藏：\${收藏数}\n转发：\${转发数}\n播放：\${播放数}\n评论：\${评论数}`
-    ).description('统一消息格式，可用变量：${标题} ${作者} ${简介} ${点赞数} ${收藏数} ${转发数} ${播放数} ${评论数} ${视频时长} ${发布时间} ${图片数量} ${作者ID} ${视频链接} ${封面} ${音乐作者} ${音乐标题}'),
+    ).description('统一消息格式，可用变量：${标题} ${作者} ${简介} ${点赞数} ${收藏数} ${转发数} ${播放数} ${评论数} ${视频时长} ${发布时间} ${图片数量} ${作者ID} ${封面}'),
   }).description('消息格式设置'),
 
   Schema.object({
@@ -107,7 +106,7 @@ const PLATFORM_KEYWORDS: Record<string, string[]> = {
   tiktok: ['tiktok', 'tiktok.com', 'www.tiktok.com'],
   xigua: ['xigua', 'ixigua.com'],
   haokan: ['haokan', 'haokan.baidu.com'],
-  li: ['li', 'video.li'],
+  li: ['video.li'],
   meipai: ['meipai', 'meipai.com'],
   quanmin: ['quanmin', 'quanmin.tv'],
   twitter: ['twitter', 'x.com'],
@@ -124,16 +123,31 @@ function getErrorMessage(error: unknown): string {
 function extractUrl(content: string): string[] {
   const urlMatches = content.match(/https?:\/\/[^\s\"\'\>]+/gi) || [];
   return urlMatches.filter(url => {
-    const lower = url.toLowerCase();
-    return Object.values(PLATFORM_KEYWORDS).some(group => group.some(keyword => lower.includes(keyword)));
+    try {
+      const hostname = new URL(url).hostname.toLowerCase();
+      if (hostname === 'multimedia.nt.qq.com.cn') return false;
+      return Object.values(PLATFORM_KEYWORDS).some(group =>
+        group.some(keyword =>
+          hostname.includes(keyword) || (!keyword.includes('.') && url.toLowerCase().includes(keyword))
+        )
+      );
+    } catch {
+      const lower = url.toLowerCase();
+      return Object.values(PLATFORM_KEYWORDS).some(group => group.some(keyword => lower.includes(keyword)));
+    }
   });
 }
 
 function getPlatformType(url: string): string | null {
-  const lower = url.toLowerCase();
-  for (const [platform, keywords] of Object.entries(PLATFORM_KEYWORDS)) {
-    if (keywords.some(k => lower.includes(k))) return platform;
-  }
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    if (hostname === 'multimedia.nt.qq.com.cn') return null;
+    for (const [platform, keywords] of Object.entries(PLATFORM_KEYWORDS)) {
+      if (keywords.some(k =>
+        hostname.includes(k) || (!k.includes('.') && url.toLowerCase().includes(k))
+      )) return platform;
+    }
+  } catch {}
   return null;
 }
 
@@ -290,10 +304,7 @@ function generateFormattedText(p: ParsedData, format: string): string {
     '发布时间': p.publishTime ? formatPublishTime(p.publishTime) : '',
     '图片数量': String(imageCount),
     '作者ID': p.uid,
-    '视频链接': p.video,
     '封面': p.cover,
-    '音乐作者': p.music.author || '',
-    '音乐标题': p.music.title || '',
   };
 
   const lines = format.split('\n');

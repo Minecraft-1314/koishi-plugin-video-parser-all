@@ -8,7 +8,7 @@
 - 🤖 自动识别链接来源，即丢即用
 - 🎨 完全自定义的解析结果格式，支持多项变量替换，变量无值自动隐藏行
 - 🐛 内置Debug调试模式，可详细记录所有操作与API交互日志
-- 📤 支持OneBot平台消息合并转发，优化多图文展示体验
+- 📤 支持OneBot平台消息合并转发
 - 💬 所有提示文案均可自定义，适配多语言场景
 
 ### English
@@ -17,7 +17,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 - 🤖 Auto-detection of link sources, just drop & go
 - 🎨 Fully customizable parsing result format with variable substitutions, empty variables hide the line automatically
 - 🐛 Built-in Debug mode, recording detailed operations and API interaction logs
-- 📤 Support OneBot message forwarding for better image/video display
+- 📤 Supports message merging and forwarding on the OneBot platform
 - 💬 All prompt texts are customizable for multilingual scenarios
 
 ## 项目仓库 (Repository)
@@ -97,10 +97,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | `${发布时间}` | 发布时间（格式化） | 所有平台 |
 | `${图片数量}` | 图集图片数量（live_photo 或 images 的数量） | 图集 |
 | `${作者ID}` | 作者唯一标识ID | 部分平台 |
-| `${视频链接}` | 视频直链地址 | 视频 |
 | `${封面}` | 封面图片地址 | 所有平台 |
-| `${音乐作者}` | 背景音乐作者 | 部分平台 |
-| `${音乐标题}` | 背景音乐标题 | 部分平台 |
 
 > 注：部分变量可能因平台API返回数据不同而显示为空，空值行会自动隐藏。
 
@@ -121,7 +118,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | YouTube (油管) | youtube, youtu.be | 视频 |
 | TikTok (国际版抖音) | tiktok, tiktok.com | 短视频 |
 | 好看视频 | haokan, haokan.baidu.com | 短视频 |
-| 梨视频 | li (video.li) | 短视频 |
+| 梨视频 | video.li | 短视频 |
 | 美拍 | meipai, meipai.com | 短视频 |
 | 全民直播 | quanmin (quanmin.tv) | 直播 |
 | Twitter / X | twitter, x.com | 视频、图文 |
