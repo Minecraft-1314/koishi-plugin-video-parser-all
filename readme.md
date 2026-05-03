@@ -10,6 +10,7 @@
 - 🐛 内置Debug调试模式，可详细记录所有操作与API交互日志
 - 📤 支持OneBot平台消息合并转发，优化多图文展示体验
 - 💬 所有提示文案均可自定义，适配多语言场景
+- 🔁 消息发送支持自动重试，与API重试配置联动，增强稳定性
 
 ### English
 This is a **multi-platform video/image parsing plugin** developed for the Koishi bot framework, using a unified API interface to automatically recognize and parse short video/image links from 20+ mainstream platforms such as Douyin, Kuaishou, Bilibili, Xiaohongshu, Weibo, YouTube, TikTok, Jianying, AcFun, Zhihu, Huya and more. Core features:
@@ -19,6 +20,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 - 🐛 Built-in Debug mode, recording detailed operations and API interaction logs
 - 📤 Support OneBot message forwarding for better image/video display
 - 💬 All prompt texts are customizable for multilingual scenarios
+- 🔁 Message sending supports automatic retries, linked with API retry configuration for improved stability
 
 ## 项目仓库 (Repository)
 - GitHub: `https://github.com/Minecraft-1314/koishi-plugin-video-parser-all`
@@ -63,8 +65,8 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `ignoreSendError` | boolean | true | 是否忽略消息发送失败，避免插件崩溃 |
-| `retryTimes` | number | 3 | API 请求失败时的重试次数 |
-| `retryInterval` | number | 1000 | 重试间隔时间（毫秒） |
+| `retryTimes` | number | 3 | API 请求及消息发送失败时的重试次数 |
+| `retryInterval` | number | 1000 | API 请求及消息发送重试的间隔时间（毫秒） |
 
 ### 发送方式设置
 | 配置项 | 类型 | 默认值 | 说明 |

@@ -31,8 +31,8 @@ export const Config = Schema.intersect([
 
   Schema.object({
     ignoreSendError: Schema.boolean().default(true).description('忽略消息发送失败，避免插件崩溃'),
-    retryTimes: Schema.number().min(0).default(3).description('API 请求重试次数'),
-    retryInterval: Schema.number().min(0).default(1000).description('重试间隔（毫秒）'),
+    retryTimes: Schema.number().min(0).default(3).description('API 请求重试次数（同时用于消息发送重试）'),
+    retryInterval: Schema.number().min(0).default(1000).description('重试间隔（毫秒，同时用于消息发送重试）'),
   }).description('错误与重试设置'),
 
   Schema.object({
@@ -44,7 +44,7 @@ export const Config = Schema.intersect([
     unsupportedPlatformText: Schema.string().default('不支持该平台链接').description('不支持的平台提示'),
     invalidLinkText: Schema.string().default('无效的视频链接').description('无效链接提示（parse 指令）'),
     parseErrorPrefix: Schema.string().default('❌ 解析失败：').description('解析失败消息前缀'),
-    parseErrorItemFormat: Schema.string().default('【${url}】: ${msg}').description('每条解析失败格式，可用变量：${url}（链接）、${msg}（错误信息）'),
+    parseErrorItemFormat: Schema.string().default('【${url}】: ${msg}').description('每条解析失败格式，可用 ${url} ${msg}'),
   }).description('界面文字设置'),
 ]);
 
@@ -414,22 +414,39 @@ export function apply(ctx: Context, config: any) {
     return { success: true, data: { text, parsed: result.data } };
   }
 
-  async function sendWithTimeout(session: any, content: any): Promise<any> {
-    if (config.videoSendTimeout <= 0) {
-      try { return await session.send(content); } catch (err) {
-        if (!config.ignoreSendError) throw err;
-        return null;
+  /**
+   * 发送消息（支持超时与重试），重试次数与间隔与API重试配置绑定
+   */
+  async function sendWithTimeout(session: any, content: any, customRetries?: number): Promise<any> {
+    const maxRetries = customRetries ?? config.retryTimes ?? 3;
+    const retryDelay = config.retryInterval || 1000;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (config.videoSendTimeout <= 0) {
+          // 无超时限制，直接发送
+          return await session.send(content);
+        } else {
+          // 设置超时竞争
+          return await Promise.race([
+            session.send(content),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('发送超时')), config.videoSendTimeout))
+          ]);
+        }
+      } catch (err) {
+        const errMsg = getErrorMessage(err);
+        debugLog('ERROR', `第${attempt + 1}次发送失败: ${errMsg}`);
+        if (attempt < maxRetries) {
+          debugLog('INFO', `等待 ${retryDelay}ms 后进行第 ${attempt + 2} 次重试`);
+          await delay(retryDelay);
+        } else {
+          // 最后一次失败，根据配置决定是否抛出
+          if (!config.ignoreSendError) throw err;
+          return null;
+        }
       }
     }
-    try {
-      return await Promise.race([
-        session.send(content),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('发送超时')), config.videoSendTimeout))
-      ]);
-    } catch (err) {
-      if (!config.ignoreSendError) throw err;
-      return null;
-    }
+    return null;
   }
 
   async function flush(session: any, urls: string[]) {
@@ -449,7 +466,7 @@ export function apply(ctx: Context, config: any) {
     }
 
     if (errors.length) {
-      await sendWithTimeout(session, `${texts.parseErrorPrefix}\n${errors.join('\n')}`).catch(() => {});
+      await sendWithTimeout(session, `${texts.parseErrorPrefix}\n${errors.join('\n')}`);
       await delay(500);
     }
     if (!items.length) return;
@@ -477,7 +494,7 @@ export function apply(ctx: Context, config: any) {
         if (enableForward) {
           forwardMessages.push(buildForwardNode(session, videoMsg, botName));
         } else {
-          try { await sendWithTimeout(session, videoMsg); } catch {}
+          await sendWithTimeout(session, videoMsg).catch(() => {});
           await delay(500);
         }
       }
@@ -490,16 +507,20 @@ export function apply(ctx: Context, config: any) {
           }
         } else {
           for (const url of imageUrls) {
-            try { await sendWithTimeout(session, h.image(url)); await delay(200); } catch {}
+            await sendWithTimeout(session, h.image(url)).catch(() => {});
+            await delay(200);
           }
         }
       }
     }
 
     if (enableForward && forwardMessages.length) {
+      // 合并转发发送时也使用重试机制，失败后降级逐条发送
+      const forwardMsg = h('message', { forward: true }, forwardMessages.slice(0, 100));
       try {
-        await sendWithTimeout(session, h('message', { forward: true }, forwardMessages.slice(0, 100)));
+        await sendWithTimeout(session, forwardMsg, config.retryTimes); // 使用相同的重试次数
       } catch {
+        debugLog('ERROR', '合并转发发送最终失败，降级为逐条发送');
         for (const node of forwardMessages) {
           try { await sendWithTimeout(session, node.data.content); await delay(300); } catch {}
         }
