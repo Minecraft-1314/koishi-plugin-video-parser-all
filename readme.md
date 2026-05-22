@@ -3,30 +3,10 @@
 ## 项目介绍 (Project Introduction)
 
 ### 中文
-这是一个为 Koishi 机器人框架开发的**全平台视频/图集解析插件**，使用统一API接口，支持自动识别并解析抖音、快手、B站、小红书、微博、YouTube、TikTok、剪映、AcFun、知乎、虎牙等20+主流平台的短视频/图集/实况链接。核心特性：
-- 🌐 统一API解析，覆盖20+热门平台，无需繁琐配置
-- 🤖 自动识别链接来源，即丢即用，并支持解析 XML/JSON 卡片消息中的链接（如 QQ/OneBot 平台的分享卡片）
-- 🎨 完全自定义的解析结果格式，支持多项变量替换，变量无值自动隐藏行
-- 🐛 内置Debug调试模式，可详细记录所有操作与API交互日志
-- 📤 支持OneBot平台消息合并转发，优化多图文展示体验
-- 💬 所有提示文案均可自定义，适配多语言场景
-- 🔁 消息发送支持自动重试，与API重试配置联动，增强稳定性
-- 🚀 内置内存缓存，避免短时间内重复解析同一链接；并发控制，防止资源耗尽
-- ⚡ 智能视频发送策略：普通平台优先直接发送URL，特殊平台自动降级为本地文件发送
-- 🛡️ 可选视频大小限制，防止超大文件占满服务器磁盘；自动清理所有临时文件
+这是一个为 Koishi 机器人框架开发的**全平台视频/图集解析插件**，使用统一API接口，支持自动识别并解析抖音、快手、B站、小红书、微博、YouTube、TikTok、剪映、AcFun、知乎、虎牙等20+主流平台的短视频/图集/实况链接。
 
 ### English
-This is a **multi-platform video/image parsing plugin** developed for the Koishi bot framework, using a unified API interface to automatically recognize and parse short video/image/live photo links from 20+ mainstream platforms such as Douyin, Kuaishou, Bilibili, Xiaohongshu, Weibo, YouTube, TikTok, Jianying, AcFun, Zhihu, Huya and more. Core features:
-- 🌐 Unified API parsing, covering 20+ popular platforms without complex configuration
-- 🤖 Auto-detection of link sources, drop & go, and support for extracting links from XML/JSON card messages (e.g., share cards on QQ/OneBot)
-- 🎨 Fully customizable parsing result format with variable substitutions, empty variables hide the line automatically
-- 🐛 Built-in Debug mode, recording detailed operations and API interaction logs
-- 📤 Support OneBot message forwarding for better image/video display
-- 💬 All prompt texts are customizable for multilingual scenarios
-- 🔁 Message sending supports automatic retries, linked with API retry configuration for improved stability
-- 🚀 Built-in memory cache to avoid repeated parsing of the same URL; concurrency control to prevent resource exhaustion
-- ⚡ Smart video sending strategy: priority to send URL directly for common platforms, auto downgrade to local file for special platforms
-- 🛡️ Optional video size limit to prevent oversized files from filling up server disk; automatic cleanup of all temporary files
+This is a **multi-platform video/image parsing plugin** developed for the Koishi bot framework, using a unified API interface to automatically recognize and parse short video/image/live photo links from 20+ mainstream platforms such as Douyin, Kuaishou, Bilibili, Xiaohongshu, Weibo, YouTube, TikTok, Jianying, AcFun, Zhihu, Huya and more. 
 
 ## 项目仓库 (Repository)
 - GitHub: `https://github.com/Minecraft-1314/koishi-plugin-video-parser-all`
@@ -62,14 +42,22 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | `videoDownloadTimeout` | number | 120000 | 视频下载超时（毫秒） |
 | `tempDir` | string | `./temp_videos` | 临时视频存储目录 |
 | `maxVideoSize` | number | 0 | 最大下载视频大小（MB），0 为不限制大小 |
-| `forceDownloadVideo` | boolean | true | 强制下载视频后发送（解决B站、小红书等平台URL无法直接发送的问题） |
+| `forceDownloadVideo` | boolean | false | 强制下载视频后发送 |
 
 ### 网络与 API 设置
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `timeout` | number | 180000 | API 请求超时时间（毫秒） |
 | `videoSendTimeout` | number | 60000 | 视频消息发送超时时间（毫秒，0 为不限制） |
-| `userAgent` | string | `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36` | API 请求使用的 User-Agent |
+| `userAgent` | string | `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36` | API 请求使用的 User-Agent |
+
+### API 选择与回退设置
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `primaryApiUrl` | string | `https://api.bugpk.com/api/short_videos` | 主 API 地址，解析时优先使用 |
+| `backupApiUrl` | string | `https://api.bugpk.com/api/svparse` | 备用主 API 地址，仅支持抖音、小红书、Instagram、即梦平台解析 |
+| `platformDedicatedFirst` | object | 各平台均为 `false` | 各平台独立开关：是否优先使用平台专属 API。对象键为平台标识（英文），值为布尔值。支持的键：`bilibili`（哔哩哔哩）、`douyin`（抖音）、`kuaishou`（快手）、`xiaohongshu`（小红书）、`weibo`（微博）、`xigua`（西瓜视频）、`youtube`（YouTube）、`tiktok`（TikTok）、`acfun`（AcFun）、`zhihu`（知乎）、`weishi`（微视）、`huya`（虎牙）、`haokan`（好看视频）、`meipai`（美拍）、`twitter`（Twitter/X）、`instagram`（Instagram）、`doubao`（豆包） |
+| `customApis` | array | [] | 自定义平台专属 API 列表。每项包含：`platform`（平台类型）、`apiUrl`（API 地址）。可覆盖内置默认专属 API |
 
 ### 错误与重试设置
 | 配置项 | 类型 | 默认值 | 说明 |
@@ -81,7 +69,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 ### 发送方式设置
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `enableForward` | boolean | false | 是否启用合并转发（仅 OneBot 平台），视频会单独发送 |
+| `enableForward` | boolean | false | 是否启用合并转发（仅 OneBot 平台），启用后视频与图文将整合进同一条合并消息 |
 
 ### 界面文字设置
 | 配置项 | 类型 | 默认值 | 说明 |
@@ -110,6 +98,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | `${图片数量}` | 图集/实况图片数量 | 图集/实况 |
 | `${作者ID}` | 作者唯一标识ID | 部分平台 |
 | `${封面}` | 封面图片地址 | 所有平台 |
+| `${视频链接}` | 视频原始链接 | 视频 |
 
 > 注：部分变量可能因平台API返回数据不同而显示为空，某行所有变量为空（或为"0"）时该行会自动隐藏。
 

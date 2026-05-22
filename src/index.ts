@@ -1,11 +1,12 @@
-import { Context, Schema, h, Logger } from 'koishi';
-import axios, { AxiosInstance } from 'axios';
-import fs from 'fs/promises';
-import path from 'path';
-import { createWriteStream } from 'fs';
-import { pipeline } from 'stream/promises';
+import { Context, Schema, h, Logger } from 'koishi'
+import axios, { AxiosInstance } from 'axios'
+import fs from 'fs/promises'
+import path from 'path'
+import { createWriteStream } from 'fs'
+import { pipeline } from 'stream/promises'
+import { LRUCache } from 'lru-cache'
 
-export const name = 'video-parser-all';
+export const name = 'video-parser-all'
 
 export const Config = Schema.intersect([
   Schema.object({
@@ -24,28 +25,76 @@ export const Config = Schema.intersect([
   Schema.object({
     showImageText: Schema.boolean().default(true).description('是否发送解析后的文字内容'),
     showVideoFile: Schema.boolean().default(true).description('是否发送视频文件（关闭则只发送视频链接）'),
-    maxDescLength: Schema.number().default(200).description('简介内容最大长度（字符），超出自动截断'),
-    videoDownloadTimeout: Schema.number().default(120000).description('视频下载超时（毫秒）'),
+    maxDescLength: Schema.number().min(0).step(1).default(200).description('简介内容最大长度（字符），超出自动截断'),
+    videoDownloadTimeout: Schema.number().min(0).step(1).default(120000).description('视频下载超时（毫秒）'),
     tempDir: Schema.string().default('./temp_videos').description('临时视频存储目录'),
     maxVideoSize: Schema.number().min(0).step(1).default(0).description('最大下载视频大小（MB），0 为不限制大小'),
-    forceDownloadVideo: Schema.boolean().default(true).description('强制下载视频后发送（解决B站、小红书等平台URL无法直接发送的问题）'),
+    forceDownloadVideo: Schema.boolean().default(false).description('强制下载视频后发送'),
   }).description('内容显示设置'),
 
   Schema.object({
-    timeout: Schema.number().min(0).default(180000).description('API 请求超时（毫秒）'),
-    videoSendTimeout: Schema.number().min(0).default(60000).description('视频消息发送超时（毫秒，0 为不限制）'),
-    userAgent: Schema.string().default('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36').description('API 请求 UA'),
+    timeout: Schema.number().min(0).step(1).default(180000).description('API 请求超时（毫秒）'),
+    videoSendTimeout: Schema.number().min(0).step(1).default(60000).description('视频消息发送超时（毫秒，0 为不限制）'),
+    userAgent: Schema.string().default('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36').description('API 请求 UA'),
   }).description('网络与 API 设置'),
 
   Schema.object({
     ignoreSendError: Schema.boolean().default(true).description('忽略消息发送失败，避免插件崩溃'),
-    retryTimes: Schema.number().min(0).default(3).description('API 请求及消息发送失败时的重试次数'),
-    retryInterval: Schema.number().min(0).default(1000).description('重试间隔（毫秒，同时用于消息发送重试）'),
+    retryTimes: Schema.number().min(0).step(1).default(3).description('API 请求及消息发送失败时的重试次数'),
+    retryInterval: Schema.number().min(0).step(1).default(1000).description('重试间隔（毫秒，同时用于消息发送重试）'),
   }).description('错误与重试设置'),
 
   Schema.object({
-    enableForward: Schema.boolean().default(false).description('启用合并转发（仅 OneBot 平台），视频会单独发送'),
+    enableForward: Schema.boolean().default(false).description('启用合并转发（仅 OneBot 平台）'),
   }).description('发送方式设置'),
+
+  Schema.object({
+    primaryApiUrl: Schema.string().default('https://api.bugpk.com/api/short_videos').description('主 API 地址'),
+    backupApiUrl: Schema.string().default('https://api.bugpk.com/api/svparse').description('备用主 API 地址（仅支持抖音/小红书/ins/即梦）'),
+    platformDedicatedFirst: Schema.object({
+      bilibili: Schema.boolean().default(false).description('哔哩哔哩'),
+      douyin: Schema.boolean().default(false).description('抖音'),
+      kuaishou: Schema.boolean().default(false).description('快手'),
+      xiaohongshu: Schema.boolean().default(false).description('小红书'),
+      weibo: Schema.boolean().default(false).description('微博'),
+      xigua: Schema.boolean().default(false).description('西瓜视频'),
+      youtube: Schema.boolean().default(false).description('YouTube'),
+      tiktok: Schema.boolean().default(false).description('TikTok'),
+      acfun: Schema.boolean().default(false).description('AcFun'),
+      zhihu: Schema.boolean().default(false).description('知乎'),
+      weishi: Schema.boolean().default(false).description('微视'),
+      huya: Schema.boolean().default(false).description('虎牙'),
+      haokan: Schema.boolean().default(false).description('好看视频'),
+      meipai: Schema.boolean().default(false).description('美拍'),
+      twitter: Schema.boolean().default(false).description('Twitter/X'),
+      instagram: Schema.boolean().default(false).description('Instagram'),
+      doubao: Schema.boolean().default(false).description('豆包'),
+    }).description('各平台独立开关：是否优先使用专属 API'),
+    customApis: Schema.array(
+      Schema.object({
+        platform: Schema.union([
+          Schema.const('bilibili').description('哔哩哔哩'),
+          Schema.const('douyin').description('抖音'),
+          Schema.const('kuaishou').description('快手'),
+          Schema.const('xiaohongshu').description('小红书'),
+          Schema.const('weibo').description('微博'),
+          Schema.const('xigua').description('西瓜视频'),
+          Schema.const('youtube').description('YouTube'),
+          Schema.const('tiktok').description('TikTok'),
+          Schema.const('acfun').description('AcFun'),
+          Schema.const('zhihu').description('知乎'),
+          Schema.const('weishi').description('微视'),
+          Schema.const('huya').description('虎牙'),
+          Schema.const('haokan').description('好看视频'),
+          Schema.const('meipai').description('美拍'),
+          Schema.const('twitter').description('Twitter/X'),
+          Schema.const('instagram').description('Instagram'),
+          Schema.const('doubao').description('豆包'),
+        ]).description('选择平台'),
+        apiUrl: Schema.string().description('API 地址'),
+      })
+    ).default([]).description('自定义平台专属 API 地址，留空则使用内置默认专属 API'),
+  }).description('API 选择设置'),
 
   Schema.object({
     waitingTipText: Schema.string().default('正在解析视频，请稍候...').description('解析等待提示'),
@@ -54,171 +103,183 @@ export const Config = Schema.intersect([
     parseErrorPrefix: Schema.string().default('❌ 解析失败：').description('解析失败消息前缀'),
     parseErrorItemFormat: Schema.string().default('【${url}】: ${msg}').description('每条解析失败格式，可用 ${url}（链接）和 ${msg}（错误信息）'),
   }).description('界面文字设置'),
-]);
+])
 
 interface VideoQuality {
-  quality: string;
-  url: string;
-  bit_rate?: number;
+  quality: string
+  url: string
+  bit_rate?: number
 }
 
 interface ParsedData {
-  type: string;
-  title: string;
-  desc: string;
-  author: string;
-  uid: string;
-  avatar: string;
-  cover: string;
-  video: string;
-  videos: VideoQuality[];
-  images: string[];
-  live_photo: Array<{ image: string; video: string }>;
-  music: { title?: string; author?: string; cover?: string; url?: string };
-  like: number;
-  comment: number;
-  collect: number;
-  share: number;
-  play: number;
-  duration: number;
-  publishTime: number;
+  type: string
+  title: string
+  desc: string
+  author: string
+  uid: string
+  avatar: string
+  cover: string
+  video: string
+  videos: VideoQuality[]
+  images: string[]
+  live_photo: Array<{ image: string; video: string }>
+  music: { title?: string; author?: string; cover?: string; url?: string }
+  like: number
+  comment: number
+  collect: number
+  share: number
+  play: number
+  duration: number
+  publishTime: number
 }
 
-const logger = new Logger(name);
-let debugEnabled = false;
+const logger = new Logger(name)
+let debugEnabled = false
 
 function debugLog(level: string, ...args: any[]) {
-  if (!debugEnabled) return;
-  const timestamp = new Date().toISOString();
-  const message = `[${timestamp}] [${level}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')}`;
-  logger.info(message);
+  if (!debugEnabled) return
+  const timestamp = new Date().toISOString()
+  const message = `[${timestamp}] [${level}] ${args.map(a => {
+    if (typeof a === 'object') {
+      try {
+        return JSON.stringify(a, null, 2)
+      } catch {
+        return String(a)
+      }
+    }
+    return String(a)
+  }).join(' ')}`
+  logger.info(message)
 }
 
 interface LinkMatch {
-  type: string;
-  url: string;
-  id: string;
+  type: string
+  url: string
+  id: string
 }
+
+const urlCache = new LRUCache<string, { data: ParsedData; expire: number }>({
+  max: 500,
+  ttl: 10 * 60 * 1000,
+  updateAgeOnGet: false,
+})
 
 function linkTypeParser(content: string): LinkMatch[] {
-  content = content.replace(/\\\//g, '/');
-  const rules: { pattern: RegExp; type: string; buildUrl: (id: string) => string }[] = [
-    { pattern: /bilibili\.com\/video\/([ab]v[0-9a-zA-Z]+)/gi, type: 'bilibili', buildUrl: (id) => `https://www.bilibili.com/video/${id}` },
-    { pattern: /b23\.tv(?:\\)?\/([0-9a-zA-Z]+)/gi, type: 'bilibili', buildUrl: (id) => `https://b23.tv/${id}` },
-    { pattern: /bili(?:22|23|33)\.cn\/([0-9a-zA-Z]+)/gi, type: 'bilibili', buildUrl: (id) => `https://bili23.cn/${id}` },
-    { pattern: /bili2233\.cn\/([0-9a-zA-Z]+)/gi, type: 'bilibili', buildUrl: (id) => `https://bili2233.cn/${id}` },
-    { pattern: /douyin\.com\/video\/(\d+)/gi, type: 'douyin', buildUrl: (id) => `https://www.douyin.com/video/${id}` },
-    { pattern: /v\.douyin\.com\/([0-9a-zA-Z]+)/gi, type: 'douyin', buildUrl: (id) => `https://v.douyin.com/${id}` },
-    { pattern: /kuaishou\.com\/short-video\/([0-9a-zA-Z]+)/gi, type: 'kuaishou', buildUrl: (id) => `https://www.kuaishou.com/short-video/${id}` },
-    { pattern: /v\.kuaishou\.com\/([0-9a-zA-Z]+)/gi, type: 'kuaishou', buildUrl: (id) => `https://v.kuaishou.com/${id}` },
-    { pattern: /xiaohongshu\.com\/discovery\/item\/([0-9a-zA-Z]+)/gi, type: 'xiaohongshu', buildUrl: (id) => `https://www.xiaohongshu.com/discovery/item/${id}` },
-    { pattern: /xhslink\.com\/([0-9a-zA-Z]+)/gi, type: 'xiaohongshu', buildUrl: (id) => `https://xhslink.com/${id}` },
-    { pattern: /weibo\.com\/\d+\/([0-9a-zA-Z]+)/gi, type: 'weibo', buildUrl: (id) => `https://weibo.com/${id}` },
-    { pattern: /video\.weibo\.com\/show\?fid=([0-9a-zA-Z]+)/gi, type: 'weibo', buildUrl: (id) => `https://video.weibo.com/show?fid=${id}` },
-    { pattern: /ixigua\.com\/(\d+)/gi, type: 'xigua', buildUrl: (id) => `https://www.ixigua.com/${id}` },
-    { pattern: /youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)/gi, type: 'youtube', buildUrl: (id) => `https://www.youtube.com/watch?v=${id}` },
-    { pattern: /youtu\.be\/([a-zA-Z0-9_-]+)/gi, type: 'youtube', buildUrl: (id) => `https://youtu.be/${id}` },
-    { pattern: /tiktok\.com\/@[\w.]+\/video\/(\d+)/gi, type: 'tiktok', buildUrl: (id) => `https://www.tiktok.com/@user/video/${id}` },
-    { pattern: /vm\.tiktok\.com\/([0-9a-zA-Z]+)/gi, type: 'tiktok', buildUrl: (id) => `https://vm.tiktok.com/${id}` },
-    { pattern: /acfun\.cn\/v\/(ac\d+)/gi, type: 'acfun', buildUrl: (id) => `https://www.acfun.cn/v/${id}` },
-    { pattern: /zhihu\.com\/video\/(\d+)/gi, type: 'zhihu', buildUrl: (id) => `https://www.zhihu.com/video/${id}` },
-    { pattern: /weishi\.qq\.com\/weishi\/feed\/([0-9a-zA-Z]+)/gi, type: 'weishi', buildUrl: (id) => `https://weishi.qq.com/weishi/feed/${id}` },
-    { pattern: /huya\.com\/video\/([0-9a-zA-Z]+)/gi, type: 'huya', buildUrl: (id) => `https://www.huya.com/video/${id}` },
-    { pattern: /haokan\.baidu\.com\/v\?vid=([0-9a-zA-Z]+)/gi, type: 'haokan', buildUrl: (id) => `https://haokan.baidu.com/v?vid=${id}` },
-    { pattern: /meipai\.com\/media\/(\d+)/gi, type: 'meipai', buildUrl: (id) => `https://www.meipai.com/media/${id}` },
-    { pattern: /twitter\.com\/\w+\/status\/(\d+)/gi, type: 'twitter', buildUrl: (id) => `https://twitter.com/i/status/${id}` },
-    { pattern: /x\.com\/\w+\/status\/(\d+)/gi, type: 'twitter', buildUrl: (id) => `https://x.com/i/status/${id}` },
-    { pattern: /instagram\.com\/p\/([0-9a-zA-Z_-]+)/gi, type: 'instagram', buildUrl: (id) => `https://www.instagram.com/p/${id}` },
-    { pattern: /doubao\.com\/video\/(\d+)/gi, type: 'doubao', buildUrl: (id) => `https://www.doubao.com/video/${id}` },
-  ];
+  content = content.replace(/\\\//g, '/')
+  const rules: { pattern: RegExp; type: string }[] = [
+    { pattern: /https?:\/\/(?:www\.)?bilibili\.com\/video\/([ab]v[0-9a-zA-Z_-]+)/gi, type: 'bilibili' },
+    { pattern: /https?:\/\/b23\.tv\/[0-9a-zA-Z_-]{5,}/gi, type: 'bilibili' },
+    { pattern: /https?:\/\/bili\d+\.cn\/[0-9a-zA-Z_-]{5,}/gi, type: 'bilibili' },
+    { pattern: /https?:\/\/(?:www\.)?douyin\.com\/video\/\d{10,}/gi, type: 'douyin' },
+    { pattern: /https?:\/\/v\.douyin\.com\/[0-9a-zA-Z_-]{8,}/gi, type: 'douyin' },
+    { pattern: /https?:\/\/(?:www\.)?kuaishou\.com\/short-video\/[0-9a-zA-Z_-]{10,}/gi, type: 'kuaishou' },
+    { pattern: /https?:\/\/v\.kuaishou\.com\/[0-9a-zA-Z_-]{8,}/gi, type: 'kuaishou' },
+    { pattern: /https?:\/\/(?:www\.)?xiaohongshu\.com\/discovery\/item\/[0-9a-zA-Z_-]{10,}/gi, type: 'xiaohongshu' },
+    { pattern: /https?:\/\/xhslink\.com\/[0-9a-zA-Z_-]{8,}/gi, type: 'xiaohongshu' },
+    { pattern: /https?:\/\/weibo\.com\/\d+\/[0-9a-zA-Z_-]{10,}/gi, type: 'weibo' },
+    { pattern: /https?:\/\/video\.weibo\.com\/show\?fid=[0-9a-zA-Z_-]{10,}/gi, type: 'weibo' },
+    { pattern: /https?:\/\/(?:www\.)?ixigua\.com\/\d{10,}/gi, type: 'xigua' },
+    { pattern: /https?:\/\/(?:www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}/gi, type: 'youtube' },
+    { pattern: /https?:\/\/youtu\.be\/[a-zA-Z0-9_-]{11}/gi, type: 'youtube' },
+    { pattern: /https?:\/\/(?:www\.)?tiktok\.com\/@[\w.]+\/video\/\d{10,}/gi, type: 'tiktok' },
+    { pattern: /https?:\/\/vm\.tiktok\.com\/[0-9a-zA-Z_-]{8,}/gi, type: 'tiktok' },
+    { pattern: /https?:\/\/(?:www\.)?acfun\.cn\/v\/ac\d{10,}/gi, type: 'acfun' },
+    { pattern: /https?:\/\/(?:www\.)?zhihu\.com\/video\/\d{10,}/gi, type: 'zhihu' },
+    { pattern: /https?:\/\/weishi\.qq\.com\/weishi\/feed\/[0-9a-zA-Z_-]{10,}/gi, type: 'weishi' },
+    { pattern: /https?:\/\/(?:www\.)?huya\.com\/video\/[0-9a-zA-Z_-]{10,}/gi, type: 'huya' },
+    { pattern: /https?:\/\/haokan\.baidu\.com\/v\?vid=[0-9a-zA-Z_-]{10,}/gi, type: 'haokan' },
+    { pattern: /https?:\/\/(?:www\.)?meipai\.com\/media\/\d{10,}/gi, type: 'meipai' },
+    { pattern: /https?:\/\/twitter\.com\/\w+\/status\/\d{10,}/gi, type: 'twitter' },
+    { pattern: /https?:\/\/x\.com\/\w+\/status\/\d{10,}/gi, type: 'twitter' },
+    { pattern: /https?:\/\/(?:www\.)?instagram\.com\/p\/[0-9a-zA-Z_-]{10,}/gi, type: 'instagram' },
+    { pattern: /https?:\/\/(?:www\.)?doubao\.com\/video\/\d{10,}/gi, type: 'doubao' },
+  ]
 
-  const matches: LinkMatch[] = [];
-  const seen = new Set<string>();
+  const matches: LinkMatch[] = []
+  const seen = new Set<string>()
 
   for (const rule of rules) {
-    let match: RegExpExecArray | null;
+    let match: RegExpExecArray | null
+    rule.pattern.lastIndex = 0
     while ((match = rule.pattern.exec(content)) !== null) {
-      const id = match[1];
-      if (seen.has(id)) continue;
-      seen.add(id);
-      const url = rule.buildUrl(id);
-      matches.push({ type: rule.type, url, id });
+      const url = match[0]
+      if (seen.has(url)) continue
+      seen.add(url)
+      matches.push({ type: rule.type, url, id: match[1] || url })
     }
   }
-  return matches;
+  return matches
 }
 
-function extractUrl(content: string): string[] {
-  const urlMatches = content.match(/https?:\/\/[^\s\"\'\>]+/gi) || [];
-  return urlMatches.filter(url => {
-    try {
-      const hostname = new URL(url).hostname.toLowerCase();
-      if (hostname === 'multimedia.nt.qq.com.cn') return false;
-      return true;
-    } catch {
-      return false;
-    }
-  });
-}
+function extractAllUrlsFromMessage(session: any): LinkMatch[] {
+  const content = session.content?.trim() || ''
+  const matchedLinks = linkTypeParser(content)
 
-function extractAllUrlsFromMessage(session: any): string[] {
-  const content = session.content?.trim() || '';
-  const urls: string[] = [];
-
-  const linkMatches = linkTypeParser(content);
-  if (linkMatches.length > 0) {
-    for (const match of linkMatches) {
-      urls.push(match.url);
-    }
-    return [...new Set(urls)];
-  }
-
-  if (content) {
-    const textUrls = extractUrl(content);
-    urls.push(...textUrls);
-  }
-
+  const cardsContent: string[] = []
   if (session.elements) {
     for (const elem of session.elements) {
       if (elem.type === 'xml' && elem.data) {
-        const urlRegex = /https?:\/\/[^\s<>"']+/gi;
-        let match;
-        while ((match = urlRegex.exec(elem.data)) !== null) {
-          urls.push(match[0]);
-        }
+        cardsContent.push(elem.data)
       } else if (elem.type === 'json' && elem.data) {
         try {
-          const json = JSON.parse(elem.data);
-          const extractFromObject = (obj: any) => {
-            if (!obj || typeof obj !== 'object') return;
+          const json = JSON.parse(elem.data)
+          const extract = (obj: any) => {
+            if (!obj || typeof obj !== 'object') return
             for (const val of Object.values(obj)) {
               if (typeof val === 'string') {
-                const match = val.match(/https?:\/\/[^\s<>"']+/gi);
-                if (match) urls.push(...match);
-              } else if (typeof val === 'object') extractFromObject(val);
+                cardsContent.push(val)
+              } else if (typeof val === 'object') extract(val)
             }
-          };
-          extractFromObject(json);
+          }
+          extract(json)
         } catch {}
       }
     }
   }
 
-  return [...new Set(urls)];
+  for (const cardContent of cardsContent) {
+    const cardLinks = linkTypeParser(cardContent)
+    matchedLinks.push(...cardLinks)
+  }
+
+  const seen = new Set<string>()
+  const result: LinkMatch[] = []
+  for (const link of matchedLinks) {
+    if (!seen.has(link.url)) {
+      seen.add(link.url)
+      result.push(link)
+    }
+  }
+  return result
 }
 
 function cleanUrl(url: string): string {
   try {
-    url = url.replace(/&amp;/g, '&');
-    const urlObj = new URL(url);
-    if (urlObj.hostname.includes('douyin.com') || urlObj.hostname.includes('v.douyin.com')) {
-      urlObj.searchParams.delete('source');
-      urlObj.searchParams.delete('share_type');
-      return urlObj.origin + urlObj.pathname;
+    url = url.replace(/&amp;/g, '&')
+    const urlObj = new URL(url)
+    
+    if (urlObj.protocol === 'http:') {
+      urlObj.protocol = 'https:'
     }
-    return url;
+
+    if (urlObj.hostname.includes('douyin.com') || urlObj.hostname.includes('v.douyin.com')) {
+      ['source', 'share_type', 'share_token', 'timestamp', 'from', 'isappinstalled'].forEach(p => {
+        urlObj.searchParams.delete(p)
+      })
+      return urlObj.origin + urlObj.pathname
+    }
+    
+    if (urlObj.hostname.includes('bilibili.com') || urlObj.hostname.includes('b23.tv')) {
+      ['share_source', 'share_medium', 'share_plat', 'share_session_id', 'share_tag', 'timestamp'].forEach(p => {
+        urlObj.searchParams.delete(p)
+      })
+      return urlObj.origin + urlObj.pathname
+    }
+
+    return urlObj.toString()
   } catch (e) {
-    return url.replace(/&amp;/g, '&').replace(/\?.*/, '');
+    debugLog('WARN', '清理URL失败:', e, '原始URL:', url)
+    return url.replace(/&amp;/g, '&').replace(/\?.*/, '')
   }
 }
 
@@ -232,110 +293,142 @@ async function resolveShortUrl(url: string): Promise<string> {
         'Referer': 'https://www.baidu.com/',
       },
       validateStatus: (status: number) => status >= 200 && status < 400,
-    });
-    const finalUrl = (res.request as any)?.res?.responseUrl || url;
-    return cleanUrl(finalUrl);
+    })
+    const finalUrl = (res.request as any)?.res?.responseUrl || url
+    return cleanUrl(finalUrl)
   } catch (e) {
-    return cleanUrl(url);
+    debugLog('WARN', '解析短链接失败:', e, '原始URL:', url)
+    return cleanUrl(url)
   }
 }
 
 function formatDuration(seconds: number): string {
-  if (!seconds || seconds <= 0) return '';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  return `${m}:${s.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  if (!seconds || seconds <= 0) return ''
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
 function formatPublishTime(ms: number): string {
-  if (!ms) return '';
-  const d = new Date(ms);
-  const y = d.getFullYear(), mo = (d.getMonth() + 1).toString().padStart(2, '0'), day = d.getDate().toString().padStart(2, '0'), H = d.getHours().toString().padStart(2, '0'), i = d.getMinutes().toString().padStart(2, '0');
-  return `${y}年${mo}月${day}日 ${H}:${i}`;
+  if (!ms) return ''
+  const d = new Date(ms)
+  const y = d.getFullYear(), mo = (d.getMonth() + 1).toString().padStart(2, '0'), day = d.getDate().toString().padStart(2, '0'), H = d.getHours().toString().padStart(2, '0'), i = d.getMinutes().toString().padStart(2, '0')
+  return `${y}年${mo}月${day}日 ${H}:${i}`
 }
 
 function pickBestQuality(videoBackup: any[]): VideoQuality[] {
-  if (!Array.isArray(videoBackup)) return [];
+  if (!Array.isArray(videoBackup)) return []
   return videoBackup
-    .map(v => ({ quality: v.quality || v.label, url: v.url, bit_rate: v.bit_rate || 0 }))
-    .sort((a, b) => (b.bit_rate || 0) - (a.bit_rate || 0));
+    .filter(v => v && v.url)
+    .map(v => ({ 
+      quality: v.quality || v.label || 'unknown', 
+      url: v.url, 
+      bit_rate: Number(v.bit_rate || 0) 
+    }))
+    .sort((a, b) => b.bit_rate - a.bit_rate)
 }
 
 function parseApiResponse(raw: any, maxDescLen: number): ParsedData {
-  debugLog('DEBUG', '原始API返回数据:', raw);
-  const data = raw?.data || {};
-  const extra = data.extra || {};
+  debugLog('DEBUG', '原始API返回数据:', raw)
+  const data = raw?.data || {}
+  const extra = data.extra || {}
 
-  let type = data.type || '';
+  let type = data.type || ''
   if (!type) {
-    if (data.images?.length > 0 && !data.url) type = 'image';
-    else if (data.live_photo?.length > 0) type = 'live_photo';
-    else if (raw.msg === 'live' || data.live) type = 'live';
-    else type = 'video';
+    if (data.images?.length > 0 && !data.url) type = 'image'
+    else if (data.live_photo?.length > 0) type = 'live_photo'
+    else if (raw.msg === 'live' || data.live) type = 'live'
+    else type = 'video'
   }
 
-  const authorObj = data.author;
-  let author = '', uid = '', avatar = '';
+  const authorObj = data.author
+  let author = '', uid = '', avatar = ''
   if (authorObj && typeof authorObj === 'object') {
-    author = authorObj.name || authorObj.author || '';
-    uid = String(authorObj.id || data.uid || '');
-    avatar = authorObj.avatar || data.avatar || '';
+    author = authorObj.name || authorObj.author || ''
+    uid = String(authorObj.id || data.uid || '')
+    avatar = authorObj.avatar || data.avatar || ''
   } else {
-    author = data.author || data.auther || '';
-    uid = String(data.uid || '');
-    avatar = data.avatar || '';
+    author = data.author || data.auther || ''
+    uid = String(data.uid || '')
+    avatar = data.avatar || ''
   }
 
-  const title = data.title || '';
-  const desc = (data.desc || data.description || '').slice(0, maxDescLen);
-  const cover = data.cover || '';
+  const title = data.title || ''
+  const desc = (data.desc || data.description || '').slice(0, maxDescLen).trim()
+  const cover = data.cover || ''
 
-  let video = '';
-  let videos: VideoQuality[] = [];
+  let video = ''
+  let videos: VideoQuality[] = []
+  
   if (Array.isArray(data.video_backup) && data.video_backup.length) {
-    const bestQ = pickBestQuality(data.video_backup);
-    videos = bestQ;
-    video = bestQ[0]?.url || data.url || '';
-  } else if (Array.isArray(data.videos) && data.videos.length) {
-    video = data.videos[0]?.url || '';
-    videos = data.videos.map((v: any) => ({ quality: v.accept?.[0] || 'unknown', url: v.url }));
-  } else {
-    video = data.url || '';
+    const bestQ = pickBestQuality(data.video_backup)
+    videos = bestQ
+    video = bestQ[0]?.url || ''
+  }
+  
+  if (!video && Array.isArray(data.videos) && data.videos.length) {
+    const validVideos = data.videos.filter((v: any) => v && v.url)
+    if (validVideos.length) {
+      video = validVideos[0].url
+      videos = validVideos.map((v: any) => ({ 
+        quality: v.accept?.[0] || 'unknown', 
+        url: v.url 
+      }))
+    }
+  }
+  
+  if (!video && data.url) {
+    video = data.url
+  }
+  
+  if (video && !video.startsWith('http')) {
+    video = 'https:' + video
   }
 
-  const images: string[] = Array.isArray(data.images) ? data.images : [];
-  const live_photo = Array.isArray(data.live_photo) ? data.live_photo : [];
+  const images: string[] = Array.isArray(data.images) 
+    ? data.images.filter((img: any) => img && typeof img === 'string').map((img: any) => {
+        if (!img.startsWith('http')) return 'https:' + img
+        return img
+      }) 
+    : []
+  
+  const live_photo = Array.isArray(data.live_photo) 
+    ? data.live_photo.filter((lp: any) => lp && lp.image).map((lp: any) => ({
+        image: lp.image.startsWith('http') ? lp.image : 'https:' + lp.image,
+        video: lp.video ? (lp.video.startsWith('http') ? lp.video : 'https:' + lp.video) : ''
+      })) 
+    : []
 
   const music = {
     title: data.music?.title || data.music?.name || '',
     author: data.music?.author || data.music?.artist || '',
     cover: data.music?.cover || '',
     url: data.music?.url || ''
-  };
-
-  const stats = extra.statistics || {};
-  const like = Number(data.like ?? stats.digg_count ?? 0);
-  const comment = Number(stats.comment_count ?? 0);
-  const collect = Number(stats.collect_count ?? 0);
-  const share = Number(stats.share_count ?? 0);
-  const play = Number(stats.play_count ?? 0);
-
-  let duration = 0;
-  if (data.duration) {
-    duration = typeof data.duration === 'string' ? parseInt(data.duration, 10) : data.duration;
-    if (duration > 1000000) duration = Math.floor(duration / 1000);
-  } else if (extra.duration_ms) {
-    duration = Math.floor(extra.duration_ms / 1000);
   }
 
-  let publishTime = 0;
+  const stats = extra.statistics || {}
+  const like = Number(data.like ?? stats.digg_count ?? 0)
+  const comment = Number(stats.comment_count ?? 0)
+  const collect = Number(stats.collect_count ?? 0)
+  const share = Number(stats.share_count ?? 0)
+  const play = Number(stats.play_count ?? 0)
+
+  let duration = 0
+  if (data.duration) {
+    duration = typeof data.duration === 'string' ? parseInt(data.duration, 10) : data.duration
+    if (duration > 1000000) duration = Math.floor(duration / 1000)
+  } else if (extra.duration_ms) {
+    duration = Math.floor(extra.duration_ms / 1000)
+  }
+
+  let publishTime = 0
   if (data.time) {
-    publishTime = typeof data.time === 'number' ? data.time : parseInt(data.time, 10);
-    if (publishTime < 1000000000000) publishTime *= 1000;
+    publishTime = typeof data.time === 'number' ? data.time : parseInt(data.time, 10)
+    if (publishTime < 1000000000000) publishTime *= 1000
   } else if (extra.create_time) {
-    publishTime = extra.create_time * 1000;
+    publishTime = extra.create_time * 1000
   }
 
   return {
@@ -343,11 +436,11 @@ function parseApiResponse(raw: any, maxDescLen: number): ParsedData {
     video, videos, images, live_photo, music,
     like, comment, collect, share, play,
     duration, publishTime
-  };
+  }
 }
 
 function generateFormattedText(p: ParsedData, format: string): string {
-  const imageCount = p.images.length || p.live_photo.length;
+  const imageCount = p.images.length || p.live_photo.length
   const vars: Record<string, string> = {
     '标题': p.title,
     '作者': p.author,
@@ -362,110 +455,109 @@ function generateFormattedText(p: ParsedData, format: string): string {
     '图片数量': String(imageCount),
     '作者ID': p.uid,
     '封面': p.cover,
-  };
+    '视频链接': p.video,
+  }
 
-  const lines = format.split('\n');
-  const resultLines: string[] = [];
+  const lines = format.split('\n')
+  const resultLines: string[] = []
 
   for (const line of lines) {
-    const varMatches = line.match(/\$\{([^}]+)\}/g);
+    const varMatches = line.match(/\$\{([^}]+)\}/g)
     if (varMatches) {
-      let allEmpty = true;
+      let allEmpty = true
       for (const match of varMatches) {
-        const varName = match.replace(/\$\{|\}/g, '');
-        const val = vars[varName];
+        const varName = match.replace(/\$\{|\}/g, '')
+        const val = vars[varName]
         if (val && val !== '0') {
-          allEmpty = false;
-          break;
+          allEmpty = false
+          break
         }
       }
-      if (allEmpty) continue;
+      if (allEmpty) continue
     }
-    let newLine = line;
+    let newLine = line
     for (const [key, value] of Object.entries(vars)) {
-      newLine = newLine.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), value);
+      newLine = newLine.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), value)
     }
-    resultLines.push(newLine);
+    resultLines.push(newLine)
   }
 
-  return resultLines.join('\n').trim();
+  return resultLines.join('\n').trim()
 }
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 function buildForwardNode(session: any, content: any, botName: string) {
-  let messageContent: any[];
-  if (Array.isArray(content)) messageContent = content;
-  else if (content && typeof content === 'object' && content.type) messageContent = [content];
-  else messageContent = [h.text(String(content))];
-  return h('node', { user: { nickname: botName.substring(0, 15), user_id: session.selfId } }, messageContent);
+  let messageContent: any[]
+  if (Array.isArray(content)) messageContent = content
+  else if (content && typeof content === 'object' && content.type) messageContent = [content]
+  else messageContent = [h.text(String(content))]
+  return h('node', { 
+    user: { 
+      nickname: botName.substring(0, 15), 
+      user_id: session.selfId 
+    } 
+  }, messageContent)
 }
 
-const urlCache = new Map<string, { data: ParsedData; expire: number }>();
-const CACHE_TTL = 10 * 60 * 1000;
-
 async function downloadVideoFile(videoUrl: string, tempDir: string, timeout: number, maxSizeMB: number): Promise<string> {
-  await fs.mkdir(tempDir, { recursive: true });
-  const fileName = `video_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.mp4`;
-  const filePath = path.join(tempDir, fileName);
-  
-  const writer = createWriteStream(filePath);
-  const response = await axios({
-    method: 'GET',
-    url: videoUrl,
-    responseType: 'stream',
-    timeout: timeout,
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    }
-  });
+  if (!videoUrl) throw new Error('视频链接为空')
 
-  const maxSizeBytes = maxSizeMB * 1024 * 1024;
-  const contentLength = Number(response.headers['content-length'] || 0);
+  await fs.mkdir(tempDir, { recursive: true })
+  const fileName = `video_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.mp4`
+  const filePath = path.resolve(tempDir, fileName)
   
-  if (maxSizeMB > 0 && contentLength > maxSizeBytes) {
-    writer.destroy();
-    await fs.unlink(filePath).catch(() => {});
-    throw new Error(`视频文件过大(${Math.round(contentLength/1024/1024)}MB)，超过限制(${maxSizeMB}MB)`);
+  debugLog('INFO', `开始下载视频: ${videoUrl.substring(0, 100)}...`)
+  debugLog('INFO', `临时文件路径: ${filePath}`)
+
+  const writer = createWriteStream(filePath)
+  let response
+  
+  try {
+    response = await axios({
+      method: 'GET',
+      url: videoUrl,
+      responseType: 'stream',
+      timeout: timeout,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://www.bilibili.com/',
+      },
+      validateStatus: (status) => status >= 200 && status < 300,
+    })
+  } catch (e) {
+    writer.destroy()
+    await fs.unlink(filePath).catch(() => {})
+    throw new Error(`下载视频失败: ${getErrorMessage(e)}`)
   }
 
-  let downloadedSize = 0;
-  response.data.on('data', (chunk: Buffer) => {
-    downloadedSize += chunk.length;
-    if (maxSizeMB > 0 && downloadedSize > maxSizeBytes) {
-      response.data.destroy();
-      writer.destroy();
-      fs.unlink(filePath).catch(() => {});
-      throw new Error(`视频文件过大，超过限制(${maxSizeMB}MB)`);
-    }
-  });
+  const maxSizeBytes = maxSizeMB * 1024 * 1024
+  const contentLength = Number(response.headers['content-length'] || 0)
+  
+  if (maxSizeMB > 0 && contentLength > maxSizeBytes) {
+    writer.destroy()
+    await fs.unlink(filePath).catch(() => {})
+    throw new Error(`视频文件过大(${Math.round(contentLength/1024/1024)}MB)，超过限制(${maxSizeMB}MB)`)
+  }
 
-  await pipeline(response.data, writer);
-  return filePath;
+  try {
+    await pipeline(response.data, writer)
+    debugLog('INFO', `视频下载完成`)
+    return filePath
+  } catch (e) {
+    await fs.unlink(filePath).catch(() => {})
+    throw new Error(`写入视频文件失败: ${getErrorMessage(e)}`)
+  }
 }
 
 function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
-
-function isSpecialPlatformVideo(url: string): boolean {
-  const specialHosts = [
-    'bilibili.com',
-    'akamaized.net',
-    'hdslb.com',
-    'xiaohongshu.com',
-    'xhslink.com',
-    'zhihu.com',
-    'weibo.com',
-    'sinaimg.cn'
-  ];
-  return specialHosts.some(host => url.includes(host));
+  if (error instanceof Error) return error.message
+  return String(error)
 }
 
 export function apply(ctx: Context, config: any) {
-  debugEnabled = config.debug || false;
-  debugLog('INFO', '插件初始化开始');
+  debugEnabled = config.debug || false
+  debugLog('INFO', '插件初始化开始')
 
   const texts = {
     waitingTipText: config.waitingTipText || '正在解析视频，请稍候...',
@@ -473,300 +565,429 @@ export function apply(ctx: Context, config: any) {
     invalidLinkText: config.invalidLinkText || '无效的视频链接',
     parseErrorPrefix: config.parseErrorPrefix || '❌ 解析失败：',
     parseErrorItemFormat: config.parseErrorItemFormat || '【${url}】: ${msg}',
-  };
+  }
 
   const http: AxiosInstance = axios.create({
     timeout: config.timeout,
     headers: {
-      'User-Agent': config.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'User-Agent': config.userAgent,
       'Referer': 'https://www.baidu.com/',
       'Content-Type': 'application/x-www-form-urlencoded'
     }
-  });
+  })
 
-  async function fetchApi(url: string): Promise<ParsedData> {
-    const cacheKey = url;
-    const cached = urlCache.get(cacheKey);
-    if (cached && cached.expire > Date.now()) {
-      debugLog('DEBUG', `使用缓存: ${url}`);
-      return cached.data;
-    }
-
-    debugLog('INFO', `调用API解析: ${url}`);
-    let lastError: Error | null = null;
-    for (let i = 0; i <= config.retryTimes; i++) {
-      try {
-        const res = await http.get('https://api.bugpk.com/api/short_videos', {
-          params: { url },
-          timeout: config.timeout
-        });
-        debugLog('DEBUG', `API响应: ${JSON.stringify(res.data)}`);
-        if (res.data && (res.data.code === 200 || res.data.code === 0)) {
-          const parsed = parseApiResponse(res.data, config.maxDescLength);
-          urlCache.set(cacheKey, { data: parsed, expire: Date.now() + CACHE_TTL });
-          return parsed;
-        }
-        throw new Error(res.data?.msg || '解析失败');
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        debugLog('ERROR', `第${i+1}次请求失败: ${lastError.message}`);
-        if (i < config.retryTimes) {
-          await delay(config.retryInterval);
-        }
-      }
-    }
-    throw lastError || new Error('API请求全部失败');
+  const defaultDedicatedApis: Record<string, string> = {
+    bilibili: 'https://api.bugpk.com/api/bilibili',
+    douyin: 'https://api.bugpk.com/api/douyin',
+    doubao: 'https://api.bugpk.com/api/dbvideos',
+    kuaishou: 'https://api.bugpk.com/api/kuaishou',
+    xiaohongshu: 'https://api.bugpk.com/api/xhs',
+    jimeng: 'https://api.bugpk.com/api/jimengai',
+    toutiao: 'https://api.bugpk.com/api/toutiao',
+    weibo: 'https://api.bugpk.com/api/weibo',
+    huya: 'https://api.bugpk.com/api/huya',
+    pipigx: 'https://api.bugpk.com/api/pipigx',
+    pipixia: 'https://api.bugpk.com/api/pipixia',
+    zuiyou: 'https://api.bugpk.com/api/zuiyou',
   }
 
-  async function parseUrl(url: string): Promise<{ success: true; data: ParsedData } | { success: false; msg: string }> {
-    const realUrl = await resolveShortUrl(url);
-    const candidates = [realUrl, url];
+  const backupSupportedPlatforms = new Set(['douyin', 'xiaohongshu', 'instagram', 'jimeng'])
+
+  function getPlatformConfig(type: string): { apiUrl: string | null, dedicatedFirst: boolean } {
+    const custom = config.customApis?.find((item: any) => item.platform === type)
+    let apiUrl = defaultDedicatedApis[type] || null
+    if (custom && custom.apiUrl) {
+      apiUrl = custom.apiUrl
+    }
+
+    const dedicatedFirst = config.platformDedicatedFirst?.[type] ?? false
+    return { apiUrl, dedicatedFirst }
+  }
+
+  async function fetchApi(url: string, type: string): Promise<ParsedData> {
+    const cacheKey = url
+    const cached = urlCache.get(cacheKey)
+    if (cached && cached.expire > Date.now()) {
+      debugLog('DEBUG', `使用缓存: ${url}`)
+      return cached.data
+    }
+
+    const { apiUrl: dedicatedUrl, dedicatedFirst } = getPlatformConfig(type)
+    const primaryApi = config.primaryApiUrl || 'https://api.bugpk.com/api/short_videos'
+    const backupApi = config.backupApiUrl || 'https://api.bugpk.com/api/svparse'
+    const backupAllowed = backupSupportedPlatforms.has(type)
+
+    const apiList: Array<{ url: string; label: string }> = []
+
+    if (dedicatedFirst && dedicatedUrl) {
+      apiList.push({ url: dedicatedUrl, label: `专属API(${type})` })
+      apiList.push({ url: primaryApi, label: '默认主API' })
+      if (backupAllowed) apiList.push({ url: backupApi, label: '备用主API' })
+    } else {
+      apiList.push({ url: primaryApi, label: '默认主API' })
+      if (backupAllowed) apiList.push({ url: backupApi, label: '备用主API' })
+      if (dedicatedUrl) apiList.push({ url: dedicatedUrl, label: `专属API(${type})` })
+    }
+
+    let lastError: Error | null = null
+
+    for (const api of apiList) {
+      for (let attempt = 0; attempt <= config.retryTimes; attempt++) {
+        try {
+          const res = await http.get(api.url, {
+            params: { url },
+            timeout: config.timeout
+          })
+          if (res.data && (res.data.code === 200 || res.data.code === 0)) {
+            const parsed = parseApiResponse(res.data, config.maxDescLength)
+            urlCache.set(cacheKey, { data: parsed, expire: Date.now() + 10 * 60 * 1000 })
+            return parsed
+          }
+          throw new Error(res.data?.msg || `API返回错误码: ${res.data?.code}`)
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error))
+          debugLog('ERROR', `${api.label} 第${attempt+1}次请求失败: ${lastError.message}`)
+          if (attempt < config.retryTimes) {
+            await delay(config.retryInterval)
+          }
+        }
+      }
+      debugLog('WARN', `${api.label} 所有重试均失败，切换下一个API`)
+    }
+
+    throw lastError || new Error('所有API请求全部失败')
+  }
+
+  async function parseUrl(url: string, type: string): Promise<{ success: true; data: ParsedData } | { success: false; msg: string }> {
+    const realUrl = await resolveShortUrl(url)
+    const candidates = [realUrl, url]
     for (const candidate of [...new Set(candidates)]) {
       try {
-        const info = await fetchApi(candidate);
-        return { success: true, data: info };
+        const info = await fetchApi(candidate, type)
+        if (info.video || info.images.length > 0) {
+          return { success: true, data: info }
+        }
+        debugLog('WARN', `解析成功但无有效内容: ${candidate}`)
       } catch (error) {
-        debugLog('ERROR', `候选链接解析失败: ${candidate}`, getErrorMessage(error));
+        debugLog('ERROR', `候选链接解析失败: ${candidate}`, getErrorMessage(error))
       }
     }
-    return { success: false, msg: texts.unsupportedPlatformText };
+    return { success: false, msg: texts.unsupportedPlatformText }
   }
 
-  async function processSingleUrl(url: string): Promise<
+  async function processSingleUrl(url: string, type: string): Promise<
     { success: true; data: { text: string; parsed: ParsedData } } | 
-    { success: false; msg: string }
+    { success: false; msg: string; url: string }
   > {
-    const result = await parseUrl(url);
-    if (!result.success) return result;
-    const text = generateFormattedText(result.data, config.unifiedMessageFormat);
-    return { success: true, data: { text, parsed: result.data } };
+    const result = await parseUrl(url, type)
+    if (!result.success) {
+      return { success: false, msg: result.msg, url }
+    }
+    
+    const text = generateFormattedText(result.data, config.unifiedMessageFormat)
+    
+    return { 
+      success: true, 
+      data: { 
+        text, 
+        parsed: result.data
+      } 
+    }
   }
 
   async function sendWithTimeout(session: any, content: any, customRetries?: number): Promise<any> {
-    const maxRetries = customRetries ?? config.retryTimes ?? 3;
-    const retryDelay = config.retryInterval || 1000;
-    let timeoutId: NodeJS.Timeout | null = null;
+    const maxRetries = customRetries ?? config.retryTimes ?? 3
+    const retryDelay = config.retryInterval || 1000
+    let timeoutId: NodeJS.Timeout | null = null
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        let sendPromise = session.send(content);
+        let sendPromise = session.send(content)
         if (config.videoSendTimeout > 0) {
           const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => reject(new Error('发送超时')), config.videoSendTimeout);
-          });
-          const result = await Promise.race([sendPromise, timeoutPromise]);
-          if (timeoutId) clearTimeout(timeoutId);
-          return result;
+            timeoutId = setTimeout(() => reject(new Error('发送超时')), config.videoSendTimeout)
+          })
+          const result = await Promise.race([sendPromise, timeoutPromise])
+          if (timeoutId) clearTimeout(timeoutId)
+          return result
         } else {
-          return await sendPromise;
+          return await sendPromise
         }
       } catch (err) {
-        if (timeoutId) clearTimeout(timeoutId);
-        const errMsg = getErrorMessage(err);
-        debugLog('ERROR', `第${attempt + 1}次发送失败: ${errMsg}`);
+        if (timeoutId) clearTimeout(timeoutId)
+        const errMsg = getErrorMessage(err)
+        debugLog('ERROR', `第${attempt + 1}次发送失败: ${errMsg}`)
         if (attempt < maxRetries) {
-          debugLog('INFO', `等待 ${retryDelay}ms 后进行第 ${attempt + 2} 次重试`);
-          await delay(retryDelay);
+          debugLog('INFO', `等待 ${retryDelay}ms 后进行第 ${attempt + 2} 次重试`)
+          await delay(retryDelay)
         } else {
-          if (!config.ignoreSendError) throw err;
-          return null;
+          if (!config.ignoreSendError) throw err
+          return null
         }
       }
     }
-    return null;
+    return null
   }
 
   async function sendVideoFile(session: any, videoUrl: string): Promise<any> {
-    if (!videoUrl) throw new Error('视频链接为空');
+    if (!videoUrl) return
 
-    const shouldForceDownload = config.forceDownloadVideo || isSpecialPlatformVideo(videoUrl);
-    
-    if (!shouldForceDownload) {
-      try {
-        debugLog('INFO', `尝试直接发送视频URL: ${videoUrl.substring(0, 100)}...`);
-        return await sendWithTimeout(session, h.video(videoUrl));
-      } catch (err) {
-        debugLog('ERROR', `直接发送URL失败，开始下载视频: ${getErrorMessage(err)}`);
-      }
-    } else {
-      debugLog('INFO', `检测到特殊平台视频，强制下载后发送: ${videoUrl.substring(0, 100)}...`);
+    if (!config.showVideoFile) {
+      return await sendWithTimeout(session, `视频链接：${videoUrl}`)
     }
-    
-    let tempFilePath: string | null = null;
+
+    const sendLink = async () => {
+      await sendWithTimeout(session, `视频链接：${videoUrl}`).catch(() => {})
+    }
+
+    if (config.forceDownloadVideo) {
+      try {
+        const tempFilePath = await downloadVideoFile(
+          videoUrl,
+          config.tempDir || './temp_videos',
+          config.videoDownloadTimeout || 120000,
+          config.maxVideoSize || 0
+        )
+        const localFile = `file://${tempFilePath}`
+        await sendWithTimeout(session, h.video(localFile))
+        return
+      } catch (e) {
+        debugLog('ERROR', '强制下载失败，尝试直接发送URL:', getErrorMessage(e))
+        try {
+          await sendWithTimeout(session, h.video(videoUrl))
+          return
+        } catch (urlErr) {
+          debugLog('ERROR', '发送URL也失败，降级发送链接:', getErrorMessage(urlErr))
+          await sendLink()
+        }
+      }
+      return
+    }
+
     try {
-      tempFilePath = await downloadVideoFile(
-        videoUrl, 
-        config.tempDir || './temp_videos', 
-        config.videoDownloadTimeout || 120000,
-        config.maxVideoSize || 0
-      );
-      const localFile = `file://${path.resolve(tempFilePath)}`;
-      debugLog('INFO', `视频下载完成，发送本地文件: ${localFile}`);
-      return await sendWithTimeout(session, h.video(localFile));
-    } finally {
-      if (tempFilePath) {
-        fs.unlink(tempFilePath).catch(e => debugLog('WARN', `删除临时文件失败: ${e}`));
+      debugLog('INFO', '尝试直接发送视频URL')
+      await sendWithTimeout(session, h.video(videoUrl))
+      return
+    } catch (urlErr) {
+      debugLog('ERROR', '直接发送URL失败，尝试下载:', getErrorMessage(urlErr))
+      try {
+        const tempFilePath = await downloadVideoFile(
+          videoUrl,
+          config.tempDir || './temp_videos',
+          config.videoDownloadTimeout || 120000,
+          config.maxVideoSize || 0
+        )
+        const localFile = `file://${tempFilePath}`
+        await sendWithTimeout(session, h.video(localFile))
+        return
+      } catch (downloadErr) {
+        debugLog('ERROR', '下载失败，降级发送链接:', getErrorMessage(downloadErr))
+        await sendLink()
       }
     }
   }
 
-  async function flush(session: any, urls: string[]) {
-    const uniqueUrls = [...new Set(urls)];
-    const items: { text: string; parsed: ParsedData }[] = [];
-    const errors: string[] = [];
+  async function flush(session: any, matches: LinkMatch[]) {
+    debugLog('INFO', `开始解析 ${matches.length} 个链接`)
+    
+    const items: { text: string; parsed: ParsedData }[] = []
+    const errors: string[] = []
 
-    const concurrency = 3;
-    const chunks = [];
-    for (let i = 0; i < uniqueUrls.length; i += concurrency) {
-      chunks.push(uniqueUrls.slice(i, i + concurrency));
-    }
-    for (const chunk of chunks) {
-      const results = await Promise.all(chunk.map(url => processSingleUrl(url)));
-      for (let idx = 0; idx < results.length; idx++) {
-        const res = results[idx];
-        if (res.success) {
-          items.push(res.data);
-        } else {
-          const url = chunk[idx];
-          const item = texts.parseErrorItemFormat
-            .replace(/\$\{url\}/g, url.length > 50 ? url.slice(0,50)+'...' : url)
-            .replace(/\$\{msg\}/g, res.msg);
-          errors.push(item);
-        }
+    for (let i = 0; i < matches.length; i++) {
+      const match = matches[i]
+      debugLog('INFO', `正在解析第 ${i+1}/${matches.length} 个链接: ${match.url} (平台: ${match.type})`)
+      
+      const result = await processSingleUrl(match.url, match.type)
+      if (result.success) {
+        items.push(result.data)
+      } else {
+        const item = texts.parseErrorItemFormat
+          .replace(/\$\{url\}/g, match.url.length > 50 ? match.url.slice(0,50)+'...' : match.url)
+          .replace(/\$\{msg\}/g, result.msg)
+        errors.push(item)
+      }
+      
+      if (i < matches.length - 1) {
+        await delay(500)
       }
     }
 
     if (errors.length) {
-      await sendWithTimeout(session, `${texts.parseErrorPrefix}\n${errors.join('\n')}`);
-      await delay(500);
+      await sendWithTimeout(session, `${texts.parseErrorPrefix}\n${errors.join('\n')}`)
+      await delay(500)
     }
-    if (!items.length) return;
+    
+    if (!items.length) {
+      debugLog('INFO', '没有成功解析的内容')
+      return
+    }
 
-    const enableForward = config.enableForward && session.platform === 'onebot';
-    const botName = config.botName || '视频解析机器人';
-    const videoItems: ParsedData[] = [];
+    const enableForward = config.enableForward && session.platform === 'onebot'
+    const botName = config.botName || '视频解析机器人'
 
     if (enableForward) {
-      const forwardMessages: any[] = [];
+      const forwardMessages: any[] = []
+
       for (const item of items) {
-        const p = item.parsed;
-        const text = item.text;
+        const p = item.parsed
+        const text = item.text
 
         if (text && config.showImageText) {
-          forwardMessages.push(buildForwardNode(session, text, botName));
+          forwardMessages.push(buildForwardNode(session, text, botName))
         }
         if (p.cover && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
-          forwardMessages.push(buildForwardNode(session, h.image(p.cover), botName));
+          forwardMessages.push(buildForwardNode(session, h.image(p.cover), botName))
         }
         if (p.type === 'image' || p.type === 'live_photo' || (p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
-          const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? []);
+          const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? [])
           for (const imgUrl of imageUrls) {
-            forwardMessages.push(buildForwardNode(session, h.image(imgUrl), botName));
+            forwardMessages.push(buildForwardNode(session, h.image(imgUrl), botName))
           }
         }
-        if (p.video && config.showVideoFile && (p.type === 'video' || (p.type === 'live' && !p.live_photo?.length && !p.images?.length))) {
-          videoItems.push(p);
+        if (p.video) {
+          forwardMessages.push(buildForwardNode(session, h.video(p.video), botName))
         }
       }
 
       if (forwardMessages.length) {
-        const forwardMsg = h('message', { forward: true }, forwardMessages.slice(0, 100));
+        const forwardMsg = h('message', { forward: true }, forwardMessages.slice(0, 100))
         try {
-          await sendWithTimeout(session, forwardMsg, config.retryTimes);
+          debugLog('INFO', `发送合并转发消息，包含 ${forwardMessages.length} 条内容`)
+          await sendWithTimeout(session, forwardMsg, config.retryTimes)
         } catch (err) {
-          debugLog('ERROR', '合并转发发送失败，降级为逐条发送:', err);
+          debugLog('ERROR', '合并转发发送失败，降级为逐条发送:', err)
           for (const node of forwardMessages) {
-            await sendWithTimeout(session, node.data.content).catch(() => {});
-            await delay(300);
+            await sendWithTimeout(session, node.data.content).catch(() => {})
+            await delay(300)
           }
         }
-      }
-
-      for (const p of videoItems) {
-        try {
-          await sendVideoFile(session, p.video);
-        } catch (err) {
-          debugLog('ERROR', `视频发送失败（降级发送链接）: ${getErrorMessage(err)}`);
-          await sendWithTimeout(session, `视频链接：${p.video}`).catch(() => {});
-        }
-        await delay(500);
       }
     } else {
       for (const item of items) {
-        const p = item.parsed;
-        const text = item.text;
+        const p = item.parsed
+        const text = item.text
 
         if (text && config.showImageText) {
-          await sendWithTimeout(session, text);
-          await delay(300);
+          await sendWithTimeout(session, text)
+          await delay(300)
         }
         if (p.cover && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
-          await sendWithTimeout(session, h.image(p.cover)).catch(() => {});
-          await delay(300);
+          await sendWithTimeout(session, h.image(p.cover)).catch(() => {})
+          await delay(300)
         }
-        if (p.video && config.showVideoFile && (p.type === 'video' || (p.type === 'live' && !p.live_photo?.length && !p.images?.length))) {
-          try {
-            await sendVideoFile(session, p.video);
-          } catch (err) {
-            debugLog('ERROR', `视频发送失败（降级发送链接）: ${getErrorMessage(err)}`);
-            await sendWithTimeout(session, `视频链接：${p.video}`).catch(() => {});
+        if (p.video && (p.type === 'video' || (p.type === 'live' && !p.live_photo?.length && !p.images?.length))) {
+          if (config.showVideoFile) {
+            try {
+              await sendVideoFile(session, p.video)
+            } catch (e) {
+              debugLog('ERROR', `视频发送失败: ${getErrorMessage(e)}`)
+            }
+          } else {
+            await sendWithTimeout(session, `视频链接：${p.video}`)
           }
-          await delay(500);
+          await delay(500)
         }
         if (p.type === 'image' || p.type === 'live_photo' || (p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
-          const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? []);
+          const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? [])
           for (const imgUrl of imageUrls) {
-            await sendWithTimeout(session, h.image(imgUrl)).catch(() => {});
-            await delay(200);
+            await sendWithTimeout(session, h.image(imgUrl)).catch(() => {})
+            await delay(200)
           }
         }
       }
     }
+    
+    debugLog('INFO', '所有内容处理完成')
   }
 
   ctx.on('message', async (session) => {
-    if (!config.enable) return;
+    if (!config.enable) return
 
-    // 修复：使用正确的小写subtype属性名
-    if (session.subtype === 'file_upload') return;
-    if (session.elements?.some(elem => elem.type === 'file' || elem.type === 'folder')) return;
+    if (session.subtype === 'file_upload') return
+    if (session.elements?.some(elem => elem.type === 'file' || elem.type === 'folder')) return
+    if (session.selfId === session.userId) return
 
-    const urls = extractAllUrlsFromMessage(session);
-    if (!urls.length) return;
+    const matches = extractAllUrlsFromMessage(session)
+    if (!matches.length) return
+
+    debugLog('INFO', `检测到 ${matches.length} 个链接，开始处理`)
 
     if (config.showWaitingTip) {
-      try { await sendWithTimeout(session, texts.waitingTipText); } catch {}
+      try { 
+        await sendWithTimeout(session, texts.waitingTipText) 
+      } catch (e) {
+        debugLog('WARN', '发送等待提示失败:', e)
+      }
     }
-    await flush(session, urls);
-  });
+    
+    await flush(session, matches)
+  })
 
   ctx.command('parse <url>', '手动解析视频').action(async ({ session }, url) => {
-    const us = extractUrl(url);
-    if (!us.length) {
-      await sendWithTimeout(session, texts.invalidLinkText);
-      return;
+    if (!url) {
+      await sendWithTimeout(session, texts.invalidLinkText)
+      return
     }
-    await flush(session, us);
-  });
+    
+    const matches = linkTypeParser(url)
+    if (!matches.length) {
+      await sendWithTimeout(session, texts.invalidLinkText)
+      return
+    }
+    
+    if (config.showWaitingTip) {
+      try { 
+        await sendWithTimeout(session, texts.waitingTipText) 
+      } catch {}
+    }
+    
+    await flush(session, matches)
+  })
 
-  setInterval(() => {
-    const now = Date.now();
-    for (const [key, { expire }] of urlCache.entries()) {
-      if (expire <= now) urlCache.delete(key);
+  const tempCleanupInterval = setInterval(async () => {
+    try {
+      const tempDir = config.tempDir || './temp_videos'
+      const files = await fs.readdir(tempDir)
+      const now = Date.now()
+      let deletedCount = 0
+      
+      for (const file of files) {
+        if (file.startsWith('video_') && file.endsWith('.mp4')) {
+          const filePath = path.join(tempDir, file)
+          const stats = await fs.stat(filePath)
+          if (now - stats.mtimeMs > 3600000) {
+            await fs.unlink(filePath).catch(() => {})
+            deletedCount++
+          }
+        }
+      }
+      
+      if (deletedCount > 0) {
+        debugLog('INFO', `清理了 ${deletedCount} 个过期临时视频文件`)
+      }
+    } catch (e) {
+      debugLog('WARN', '清理临时文件失败:', e)
     }
-  }, 60000);
+  }, 3600000)
+
+  ctx.on('dispose', () => {
+    clearInterval(tempCleanupInterval)
+    urlCache.clear()
+    debugLog('INFO', '插件已卸载，资源已清理')
+  })
 
   process.on('exit', async () => {
     try {
-      const tempDir = config.tempDir || './temp_videos';
-      const files = await fs.readdir(tempDir);
+      const tempDir = config.tempDir || './temp_videos'
+      const files = await fs.readdir(tempDir)
       for (const file of files) {
         if (file.startsWith('video_') && file.endsWith('.mp4')) {
-          await fs.unlink(path.join(tempDir, file)).catch(() => {});
+          await fs.unlink(path.join(tempDir, file)).catch(() => {})
         }
       }
+      debugLog('INFO', '进程退出，已清理所有临时视频文件')
     } catch {}
-  });
+  })
 
-  debugLog('INFO', '插件初始化完成');
+  debugLog('INFO', '插件初始化完成')
 }
