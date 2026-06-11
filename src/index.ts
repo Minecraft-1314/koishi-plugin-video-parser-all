@@ -226,6 +226,7 @@ const LINK_RULES: { pattern: RegExp; type: string }[] = [
   { pattern: /https?:\/\/(?:www\.)?doubao\.com\/video\/\d{10,}/gi, type: 'doubao' },
   { pattern: /https?:\/\/(?:www\.)?oasis\.weibo\.com\/v\/[0-9a-zA-Z_-]+/gi, type: 'oasis' },
   { pattern: /https?:\/\/channels\.weixin\.qq\.com\/[0-9a-zA-Z_-]+/gi, type: 'wechat_channel' },
+  { pattern: /https?:\/\/weixin\.qq\.com\/sph\/[0-9a-zA-Z_-]+/gi, type: 'wechat_channel' },
 ]
 
 function linkTypeParser(content: string): LinkMatch[] {

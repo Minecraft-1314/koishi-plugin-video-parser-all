@@ -134,7 +134,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | 皮皮虾 | pipixia, h5.pipix.com | 短视频 |
 | 最右 | zuiyou, xiaochuankeji.cn | 短视频 |
 | 绿洲 (Oasis) | oasis.weibo.com | 视频、图文 |
-| 视频号 (WeChat Channels) | channels.weixin.qq.com | 短视频 |
+| 视频号 (WeChat Channels) | channels.weixin.qq.com, weixin.qq.com/sph/ | 短视频 |
 
 > 注：部分平台解析能力可能因API限制有所差异，具体以实际解析结果为准。
 
