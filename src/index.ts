@@ -4,8 +4,24 @@ import fs from 'fs/promises'
 import path from 'path'
 import { createWriteStream } from 'fs'
 import { pipeline } from 'stream/promises'
-const LruCacheModule = require('lru-cache')
-const LRUCache = LruCacheModule.LRUCache || LruCacheModule
+import { randomBytes } from 'crypto'
+
+class SimpleLRUCache<V> {
+  private map = new Map<string, { value: V; expireAt: number }>()
+  constructor(private max: number, private ttlMs: number) {}
+  get(key: string): V | undefined {
+    const entry = this.map.get(key)
+    if (!entry) return undefined
+    if (Date.now() > entry.expireAt) { this.map.delete(key); return undefined }
+    return entry.value
+  }
+  set(key: string, value: V): void {
+    this.map.delete(key)
+    while (this.map.size >= this.max) { const k = this.map.keys().next().value; if (k === undefined) break; this.map.delete(k) }
+    this.map.set(key, { value, expireAt: Date.now() + this.ttlMs })
+  }
+  clear(): void { this.map.clear() }
+}
 
 export const name = 'video-parser-all'
 
@@ -163,47 +179,43 @@ interface LinkMatch {
   id: string
 }
 
-const urlCache = new LRUCache({
-  max: 500,
-  ttl: 10 * 60 * 1000,
-  updateAgeOnGet: false,
-})
+const urlCache = new SimpleLRUCache<{ data: ParsedData; expire: number }>(500, 10 * 60 * 1000)
+
+const LINK_RULES: { pattern: RegExp; type: string }[] = [
+  { pattern: /https?:\/\/(?:www\.)?bilibili\.com\/video\/([ab]v[0-9a-zA-Z_-]+)/gi, type: 'bilibili' },
+  { pattern: /https?:\/\/b23\.tv\/[0-9a-zA-Z_-]{5,}/gi, type: 'bilibili' },
+  { pattern: /https?:\/\/bili\d+\.cn\/[0-9a-zA-Z_-]{5,}/gi, type: 'bilibili' },
+  { pattern: /https?:\/\/(?:www\.)?douyin\.com\/video\/\d{10,}/gi, type: 'douyin' },
+  { pattern: /https?:\/\/v\.douyin\.com\/[0-9a-zA-Z_-]{8,}/gi, type: 'douyin' },
+  { pattern: /https?:\/\/(?:www\.)?kuaishou\.com\/short-video\/[0-9a-zA-Z_-]{10,}/gi, type: 'kuaishou' },
+  { pattern: /https?:\/\/v\.kuaishou\.com\/[0-9a-zA-Z_-]{8,}/gi, type: 'kuaishou' },
+  { pattern: /https?:\/\/(?:www\.)?xiaohongshu\.com\/discovery\/item\/[0-9a-zA-Z_-]{10,}/gi, type: 'xiaohongshu' },
+  { pattern: /https?:\/\/xhslink\.com\/[0-9a-zA-Z_-]{8,}/gi, type: 'xiaohongshu' },
+  { pattern: /https?:\/\/weibo\.com\/\d+\/[0-9a-zA-Z_-]{10,}/gi, type: 'weibo' },
+  { pattern: /https?:\/\/video\.weibo\.com\/show\?fid=[0-9a-zA-Z_-]{10,}/gi, type: 'weibo' },
+  { pattern: /https?:\/\/(?:www\.)?ixigua\.com\/\d{10,}/gi, type: 'xigua' },
+  { pattern: /https?:\/\/(?:www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}/gi, type: 'youtube' },
+  { pattern: /https?:\/\/youtu\.be\/[a-zA-Z0-9_-]{11}/gi, type: 'youtube' },
+  { pattern: /https?:\/\/(?:www\.)?tiktok\.com\/@[\w.]+\/video\/\d{10,}/gi, type: 'tiktok' },
+  { pattern: /https?:\/\/vm\.tiktok\.com\/[0-9a-zA-Z_-]{8,}/gi, type: 'tiktok' },
+  { pattern: /https?:\/\/(?:www\.)?acfun\.cn\/v\/ac\d{10,}/gi, type: 'acfun' },
+  { pattern: /https?:\/\/(?:www\.)?zhihu\.com\/video\/\d{10,}/gi, type: 'zhihu' },
+  { pattern: /https?:\/\/weishi\.qq\.com\/weishi\/feed\/[0-9a-zA-Z_-]{10,}/gi, type: 'weishi' },
+  { pattern: /https?:\/\/(?:www\.)?huya\.com\/video\/[0-9a-zA-Z_-]{10,}/gi, type: 'huya' },
+  { pattern: /https?:\/\/haokan\.baidu\.com\/v\?vid=[0-9a-zA-Z_-]{10,}/gi, type: 'haokan' },
+  { pattern: /https?:\/\/(?:www\.)?meipai\.com\/media\/\d{10,}/gi, type: 'meipai' },
+  { pattern: /https?:\/\/twitter\.com\/\w+\/status\/\d{10,}/gi, type: 'twitter' },
+  { pattern: /https?:\/\/x\.com\/\w+\/status\/\d{10,}/gi, type: 'twitter' },
+  { pattern: /https?:\/\/(?:www\.)?instagram\.com\/p\/[0-9a-zA-Z_-]{10,}/gi, type: 'instagram' },
+  { pattern: /https?:\/\/(?:www\.)?doubao\.com\/video\/\d{10,}/gi, type: 'doubao' },
+]
 
 function linkTypeParser(content: string): LinkMatch[] {
   content = content.replace(/\\\//g, '/')
-  const rules: { pattern: RegExp; type: string }[] = [
-    { pattern: /https?:\/\/(?:www\.)?bilibili\.com\/video\/([ab]v[0-9a-zA-Z_-]+)/gi, type: 'bilibili' },
-    { pattern: /https?:\/\/b23\.tv\/[0-9a-zA-Z_-]{5,}/gi, type: 'bilibili' },
-    { pattern: /https?:\/\/bili\d+\.cn\/[0-9a-zA-Z_-]{5,}/gi, type: 'bilibili' },
-    { pattern: /https?:\/\/(?:www\.)?douyin\.com\/video\/\d{10,}/gi, type: 'douyin' },
-    { pattern: /https?:\/\/v\.douyin\.com\/[0-9a-zA-Z_-]{8,}/gi, type: 'douyin' },
-    { pattern: /https?:\/\/(?:www\.)?kuaishou\.com\/short-video\/[0-9a-zA-Z_-]{10,}/gi, type: 'kuaishou' },
-    { pattern: /https?:\/\/v\.kuaishou\.com\/[0-9a-zA-Z_-]{8,}/gi, type: 'kuaishou' },
-    { pattern: /https?:\/\/(?:www\.)?xiaohongshu\.com\/discovery\/item\/[0-9a-zA-Z_-]{10,}/gi, type: 'xiaohongshu' },
-    { pattern: /https?:\/\/xhslink\.com\/[0-9a-zA-Z_-]{8,}/gi, type: 'xiaohongshu' },
-    { pattern: /https?:\/\/weibo\.com\/\d+\/[0-9a-zA-Z_-]{10,}/gi, type: 'weibo' },
-    { pattern: /https?:\/\/video\.weibo\.com\/show\?fid=[0-9a-zA-Z_-]{10,}/gi, type: 'weibo' },
-    { pattern: /https?:\/\/(?:www\.)?ixigua\.com\/\d{10,}/gi, type: 'xigua' },
-    { pattern: /https?:\/\/(?:www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}/gi, type: 'youtube' },
-    { pattern: /https?:\/\/youtu\.be\/[a-zA-Z0-9_-]{11}/gi, type: 'youtube' },
-    { pattern: /https?:\/\/(?:www\.)?tiktok\.com\/@[\w.]+\/video\/\d{10,}/gi, type: 'tiktok' },
-    { pattern: /https?:\/\/vm\.tiktok\.com\/[0-9a-zA-Z_-]{8,}/gi, type: 'tiktok' },
-    { pattern: /https?:\/\/(?:www\.)?acfun\.cn\/v\/ac\d{10,}/gi, type: 'acfun' },
-    { pattern: /https?:\/\/(?:www\.)?zhihu\.com\/video\/\d{10,}/gi, type: 'zhihu' },
-    { pattern: /https?:\/\/weishi\.qq\.com\/weishi\/feed\/[0-9a-zA-Z_-]{10,}/gi, type: 'weishi' },
-    { pattern: /https?:\/\/(?:www\.)?huya\.com\/video\/[0-9a-zA-Z_-]{10,}/gi, type: 'huya' },
-    { pattern: /https?:\/\/haokan\.baidu\.com\/v\?vid=[0-9a-zA-Z_-]{10,}/gi, type: 'haokan' },
-    { pattern: /https?:\/\/(?:www\.)?meipai\.com\/media\/\d{10,}/gi, type: 'meipai' },
-    { pattern: /https?:\/\/twitter\.com\/\w+\/status\/\d{10,}/gi, type: 'twitter' },
-    { pattern: /https?:\/\/x\.com\/\w+\/status\/\d{10,}/gi, type: 'twitter' },
-    { pattern: /https?:\/\/(?:www\.)?instagram\.com\/p\/[0-9a-zA-Z_-]{10,}/gi, type: 'instagram' },
-    { pattern: /https?:\/\/(?:www\.)?doubao\.com\/video\/\d{10,}/gi, type: 'doubao' },
-  ]
-
   const matches: LinkMatch[] = []
   const seen = new Set<string>()
 
-  for (const rule of rules) {
+  for (const rule of LINK_RULES) {
     let match: RegExpExecArray | null
     rule.pattern.lastIndex = 0
     while ((match = rule.pattern.exec(content)) !== null) {
@@ -425,6 +437,8 @@ function parseApiResponse(raw: any, maxDescLen: number): ParsedData {
   }
 }
 
+const formatVarRegex = /\$\{([^}]+)\}/g
+
 function generateFormattedText(p: ParsedData, format: string): string {
   const imageCount = p.images.length || p.live_photo.length
   const vars: Record<string, string> = {
@@ -444,15 +458,20 @@ function generateFormattedText(p: ParsedData, format: string): string {
     '视频链接': p.video,
   }
 
+  const varReplacements = Object.entries(vars).map(([key, val]) => ({
+    regex: new RegExp(`\\$\\{${key}\\}`, 'g'),
+    value: val,
+  }))
+
   const lines = format.split('\n')
   const resultLines: string[] = []
 
   for (const line of lines) {
-    const varMatches = line.match(/\$\{([^}]+)\}/g)
+    const varMatches = line.match(formatVarRegex)
     if (varMatches) {
       let allEmpty = true
       for (const match of varMatches) {
-        const varName = match.replace(/\$\{|\}/g, '')
+        const varName = match.slice(2, -1)
         const val = vars[varName]
         if (val && val !== '0') {
           allEmpty = false
@@ -462,8 +481,8 @@ function generateFormattedText(p: ParsedData, format: string): string {
       if (allEmpty) continue
     }
     let newLine = line
-    for (const [key, value] of Object.entries(vars)) {
-      newLine = newLine.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), value)
+    for (const { regex, value } of varReplacements) {
+      newLine = newLine.replace(regex, value)
     }
     resultLines.push(newLine)
   }
@@ -488,6 +507,7 @@ function buildForwardNode(session: any, content: any, botName: string) {
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
+  if (error && typeof error === 'object' && 'message' in error) return String((error as Record<string, unknown>).message)
   return String(error)
 }
 
@@ -495,10 +515,7 @@ export function apply(ctx: Context, config: any) {
   debugEnabled = config.debug || false
   debugLog('INFO', '插件初始化开始')
 
-  const dedupCache = new LRUCache({
-    max: 1000,
-    ttl: config.deduplicationInterval * 1000,
-  })
+  const dedupCache = new SimpleLRUCache<number>(1000, config.deduplicationInterval * 1000)
 
   const texts = {
     waitingTipText: config.waitingTipText || '正在解析视频，请稍候...',
@@ -556,7 +573,7 @@ export function apply(ctx: Context, config: any) {
         },
         validateStatus: (status: number) => status >= 200 && status < 400,
       })
-      const finalUrl = (res.request as any)?.res?.responseUrl || url
+      const finalUrl = (res.request as { res?: { responseUrl?: string } })?.res?.responseUrl || url
       return cleanUrl(finalUrl)
     } catch (e) {
       debugLog('WARN', '解析短链接失败:', e, '原始URL:', url)
@@ -569,7 +586,7 @@ export function apply(ctx: Context, config: any) {
 
     const tempDir = config.tempDir || './temp_videos'
     await fs.mkdir(tempDir, { recursive: true })
-    const fileName = `video_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.mp4`
+    const fileName = `video_${Date.now()}_${randomBytes(4).toString('hex')}.mp4`
     const filePath = path.resolve(tempDir, fileName)
     
     debugLog('INFO', `开始下载视频: ${videoUrl.substring(0, 100)}...`)
@@ -588,6 +605,7 @@ export function apply(ctx: Context, config: any) {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Referer': 'https://www.bilibili.com/',
         },
+        maxRedirects: 5,
         validateStatus: (status: number) => status >= 200 && status < 300,
       })
     } catch (e) {
@@ -596,7 +614,7 @@ export function apply(ctx: Context, config: any) {
       throw new Error(`下载视频失败: ${getErrorMessage(e)}`)
     }
 
-    const maxSizeBytes = (config.maxVideoSize || 0) * 1024 * 1024
+    const maxSizeBytes = (config.maxVideoSize ?? 0) * 1024 * 1024
     const contentLength = Number(response.headers['content-length'] || 0)
     
     if (maxSizeBytes > 0 && contentLength > maxSizeBytes) {
@@ -993,7 +1011,7 @@ export function apply(ctx: Context, config: any) {
     debugLog('INFO', '插件已卸载，资源已清理')
   })
 
-  process.on('exit', async () => {
+  process.on('beforeExit', async () => {
     try {
       const tempDir = config.tempDir || './temp_videos'
       const files = await fs.readdir(tempDir)
