@@ -3,10 +3,10 @@
 ## 项目介绍 (Project Introduction)
 
 ### 中文
-这是一个为 Koishi 机器人框架开发的**全平台视频/图集解析插件**，使用统一API接口，支持自动识别并解析抖音、快手、B站、小红书、微博、YouTube、TikTok、剪映、AcFun、知乎、虎牙等20+主流平台的短视频/图集/实况链接。
+这是一个为 Koishi 机器人框架开发的**全平台视频/图集解析插件**，使用统一API接口，支持自动识别并解析抖音、快手、B站、小红书、微博、YouTube、TikTok、剪映、AcFun、知乎、虎牙、绿洲、视频号等20+主流平台的短视频/图集/实况链接。
 
 ### English
-This is a **multi-platform video/image parsing plugin** developed for the Koishi bot framework, using a unified API interface to automatically recognize and parse short video/image/live photo links from 20+ mainstream platforms such as Douyin, Kuaishou, Bilibili, Xiaohongshu, Weibo, YouTube, TikTok, Jianying, AcFun, Zhihu, Huya and more. 
+This is a **multi-platform video/image parsing plugin** developed for the Koishi bot framework, using a unified API interface to automatically recognize and parse short video/image/live photo links from 20+ mainstream platforms such as Douyin, Kuaishou, Bilibili, Xiaohongshu, Weibo, YouTube, TikTok, Jianying, AcFun, Zhihu, Huya, Oasis, WeChat Channels and more. 
 
 ## 项目仓库 (Repository)
 - GitHub: `https://github.com/Minecraft-1314/koishi-plugin-video-parser-all`
@@ -56,8 +56,8 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 |--------|------|--------|------|
 | `primaryApiUrl` | string | `https://api.bugpk.com/api/short_videos` | 主 API 地址，解析时优先使用 |
 | `backupApiUrl` | string | `https://api.bugpk.com/api/svparse` | 备用主 API 地址，仅支持抖音、小红书、Instagram、即梦平台解析 |
-| `platformDedicatedFirst` | object | 各平台均为 `false` | 各平台独立开关：是否优先使用平台专属 API。对象键为平台标识（英文），值为布尔值。支持的键：`bilibili`（哔哩哔哩）、`douyin`（抖音）、`kuaishou`（快手）、`xiaohongshu`（小红书）、`weibo`（微博）、`xigua`（西瓜视频）、`youtube`（YouTube）、`tiktok`（TikTok）、`acfun`（AcFun）、`zhihu`（知乎）、`weishi`（微视）、`huya`（虎牙）、`haokan`（好看视频）、`meipai`（美拍）、`twitter`（Twitter/X）、`instagram`（Instagram）、`doubao`（豆包） |
-| `customApis` | array | [] | 自定义平台专属 API 列表。每项包含：`platform`（平台类型）、`apiUrl`（API 地址）。可覆盖内置默认专属 API |
+| `platformDedicatedFirst` | object | 各平台均为 `false` | 各平台独立开关：是否优先使用平台专属 API。对象键为平台标识（英文），值为布尔值。支持的键：`bilibili`、`douyin`、`kuaishou`、`xiaohongshu`、`weibo`、`xigua`、`youtube`、`tiktok`、`acfun`、`zhihu`、`weishi`、`huya`、`haokan`、`meipai`、`twitter`、`instagram`、`doubao`、`oasis`、`wechat_channel` |
+| `customApis` | array | [] | 自定义平台专属 API 列表。每项包含：`platform`（平台类型）、`apiUrl`（API 地址）、`apiKey`（API Key，可选）、`authHeaderType`（认证头类型，可选：`Bearer` / `X-API-Key` / `Custom`）、`customHeaderName`（自定义 Header 名称，仅当 `authHeaderType` 为 `Custom` 时有效）。可覆盖内置默认专属 API |
 
 ### 错误与重试设置
 | 配置项 | 类型 | 默认值 | 说明 |
@@ -133,6 +133,8 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | 皮皮搞笑 | pipigx, h5.pipigx.com | 短视频 |
 | 皮皮虾 | pipixia, h5.pipix.com | 短视频 |
 | 最右 | zuiyou, xiaochuankeji.cn | 短视频 |
+| 绿洲 (Oasis) | oasis.weibo.com | 视频、图文 |
+| 视频号 (WeChat Channels) | channels.weixin.qq.com | 短视频 |
 
 > 注：部分平台解析能力可能因API限制有所差异，具体以实际解析结果为准。
 
