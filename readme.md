@@ -141,6 +141,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | 贡献者 (Contributor) | 贡献内容 (Contribution) |
 |----------------------|-------------------------|
 | Minecraft-1314 | 插件完整开发 (Complete plugin development) |
+| ShiraiKuroko003 | 修复消息格式设置问题并且PR-1.2.5版本已修复 |
 | JH-Ahua | BugPk-Api 支持 |
 | shangxue | 灵感来源 |
 
