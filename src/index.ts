@@ -68,86 +68,91 @@ export const Config = Schema.intersect([
   Schema.object({
     unifiedMessageFormat: Schema.string().role('textarea').default(
       '标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n音乐封面：${音乐封面}\n音乐链接：${音乐链接}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}'
-    ).description('统一消息格式，可用变量：${标题} ${作者} ${简介} ${点赞数} ${收藏数} ${转发数} ${播放数} ${评论数} ${视频时长} ${发布时间} ${图片数量} ${作者ID} ${音乐标题} ${音乐作者} ${音乐封面} ${音乐链接}'),
+    ).description('文字消息格式，支持变量。某行所有变量为空时自动隐藏。封面及媒体文件由独立开关控制，默认不包含在文字中'),
   }).description('消息格式设置'),
 
   Schema.object({
-    showImageText: Schema.boolean().default(true).description('是否发送解析后的文字内容'),
+    showImageText: Schema.boolean().default(true).description('是否发送文字内容'),
     showCoverImage: Schema.boolean().default(true).description('是否发送封面图片'),
-    showVideoFile: Schema.boolean().default(true).description('是否发送视频文件（关闭则只发送视频链接）'),
-    maxDescLength: Schema.number().min(0).step(1).default(200).description('简介内容最大长度（字符），超出自动截断'),
+    showImageFile: Schema.boolean().default(true).description('封面/图片是否以文件形式发送（关闭则只发送链接）'),
+    forceDownloadImage: Schema.boolean().default(false).description('强制下载封面/图片后发送'),
+    imageDownloadTimeout: Schema.number().min(0).step(1).default(60000).description('图片下载超时（毫秒）'),
+    imageTempDir: Schema.string().default('./temp_images').description('临时封面/图片存储目录'),
+    maxImageSize: Schema.number().min(0).step(1).default(0).description('最大下载图片大小（MB），0 为不限制'),
+    showVideoFile: Schema.boolean().default(true).description('视频是否以文件形式发送（关闭则只发送链接）'),
+    forceDownloadVideo: Schema.boolean().default(false).description('强制下载视频后发送'),
     videoDownloadTimeout: Schema.number().min(0).step(1).default(120000).description('视频下载超时（毫秒）'),
     tempDir: Schema.string().default('./temp_videos').description('临时视频存储目录'),
-    maxVideoSize: Schema.number().min(0).step(1).default(0).description('最大下载视频大小（MB），0 为不限制大小'),
-    forceDownloadVideo: Schema.boolean().default(false).description('强制下载视频后发送'),
-    maxConcurrent: Schema.number().min(1).step(1).default(3).description('批量解析时最大并发数'),
+    maxVideoSize: Schema.number().min(0).step(1).default(0).description('最大下载视频大小（MB），0 为不限制'),
+    maxDescLength: Schema.number().min(0).step(1).default(200).description('简介最大长度（字符）'),
+    maxConcurrent: Schema.number().min(1).step(1).default(3).description('批量解析最大并发数'),
   }).description('内容显示设置'),
 
   Schema.object({
     timeout: Schema.number().min(0).step(1).default(180000).description('API 请求超时（毫秒）'),
-    videoSendTimeout: Schema.number().min(0).step(1).default(60000).description('视频消息发送超时（毫秒，0 为不限制）'),
-    userAgent: Schema.string().default('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36').description('API 请求 UA'),
+    videoSendTimeout: Schema.number().min(0).step(1).default(60000).description('消息发送超时（毫秒）'),
+    userAgent: Schema.string().default('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36').description('User-Agent'),
     proxy: Schema.object({
-      enabled: Schema.boolean().default(false).description('是否启用 HTTP/HTTPS 代理'),
+      enabled: Schema.boolean().default(false).description('启用代理'),
       protocol: Schema.union([
         Schema.const('http').description('HTTP'),
         Schema.const('https').description('HTTPS'),
-      ]).default('http').description('代理协议'),
-      host: Schema.string().default('127.0.0.1').description('代理地址'),
-      port: Schema.number().default(7890).description('代理端口'),
+      ]).default('http').description('协议'),
+      host: Schema.string().default('127.0.0.1').description('地址'),
+      port: Schema.number().default(7890).description('端口'),
       auth: Schema.object({
-        username: Schema.string().default('').description('代理用户名'),
-        password: Schema.string().default('').description('代理密码'),
-      }).description('代理认证'),
-    }).description('HTTP/HTTPS 代理设置（需开启 enabled）'),
+        username: Schema.string().default('').description('用户名'),
+        password: Schema.string().default('').description('密码'),
+      }).description('认证'),
+    }).description('HTTP/HTTPS 代理'),
     customHeaders: Schema.array(
       Schema.object({
-        name: Schema.string().required().description('请求头名称'),
-        value: Schema.string().required().description('请求头值'),
+        name: Schema.string().required().description('头名称'),
+        value: Schema.string().required().description('头值'),
       })
-    ).default([]).description('自定义请求头，会附加到所有 API 请求中'),
-  }).description('网络与 API 设置'),
+    ).default([]).description('自定义请求头'),
+  }).description('网络设置'),
 
   Schema.object({
-    ignoreSendError: Schema.boolean().default(true).description('忽略消息发送失败，避免插件崩溃'),
-    retryTimes: Schema.number().min(0).step(1).default(3).description('API 请求及消息发送失败时的重试次数'),
-    retryInterval: Schema.number().min(0).step(1).default(1000).description('重试间隔（毫秒，同时用于消息发送重试）'),
-  }).description('错误与重试设置'),
+    ignoreSendError: Schema.boolean().default(true).description('忽略发送失败'),
+    retryTimes: Schema.number().min(0).step(1).default(3).description('重试次数'),
+    retryInterval: Schema.number().min(0).step(1).default(1000).description('重试间隔（毫秒）'),
+  }).description('错误与重试'),
 
   Schema.object({
-    enableForward: Schema.boolean().default(false).description('启用合并转发（仅 OneBot 平台）'),
-  }).description('发送方式设置'),
+    enableForward: Schema.boolean().default(false).description('启用合并转发（仅 OneBot）'),
+  }).description('发送方式'),
 
   Schema.object({
-    deduplicationInterval: Schema.number().min(0).step(1).default(180).description('禁止重复解析时间间隔（秒），0 为不限制'),
-    cacheTTL: Schema.number().min(0).step(1).default(600).description('解析结果缓存时间（秒），0 为不缓存'),
-  }).description('缓存与去重设置'),
+    deduplicationInterval: Schema.number().min(0).step(1).default(180).description('去重间隔（秒）'),
+    cacheTTL: Schema.number().min(0).step(1).default(600).description('缓存时间（秒）'),
+  }).description('缓存与去重'),
 
   Schema.object({
-    primaryApiUrl: Schema.string().default('https://api.bugpk.com/api/short_videos').description('主 API 地址'),
-    backupApiUrl: Schema.string().default('https://api.bugpk.com/api/svparse').description('备用主 API 地址'),
+    primaryApiUrl: Schema.string().default('https://api.bugpk.com/api/short_videos').description('主 API'),
+    backupApiUrl: Schema.string().default('https://api.bugpk.com/api/svparse').description('备用主 API'),
     platformDedicatedFirst: Schema.object({
-      bilibili: Schema.boolean().default(false).description('哔哩哔哩 - 优先使用专属 API'),
-      douyin: Schema.boolean().default(false).description('抖音 - 优先使用专属 API'),
-      kuaishou: Schema.boolean().default(false).description('快手 - 优先使用专属 API'),
-      xiaohongshu: Schema.boolean().default(false).description('小红书 - 优先使用专属 API'),
-      weibo: Schema.boolean().default(false).description('微博 - 优先使用专属 API'),
-      xigua: Schema.boolean().default(false).description('西瓜视频 - 优先使用专属 API'),
-      youtube: Schema.boolean().default(false).description('YouTube - 优先使用专属 API'),
-      tiktok: Schema.boolean().default(false).description('TikTok - 优先使用专属 API'),
-      acfun: Schema.boolean().default(false).description('AcFun - 优先使用专属 API'),
-      zhihu: Schema.boolean().default(false).description('知乎 - 优先使用专属 API'),
-      weishi: Schema.boolean().default(false).description('微视 - 优先使用专属 API'),
-      huya: Schema.boolean().default(false).description('虎牙 - 优先使用专属 API'),
-      haokan: Schema.boolean().default(false).description('好看视频 - 优先使用专属 API'),
-      meipai: Schema.boolean().default(false).description('美拍 - 优先使用专属 API'),
-      twitter: Schema.boolean().default(false).description('Twitter/X - 优先使用专属 API'),
-      instagram: Schema.boolean().default(false).description('Instagram - 优先使用专属 API'),
-      doubao: Schema.boolean().default(false).description('豆包 - 优先使用专属 API'),
-      doubao_chat: Schema.boolean().default(false).description('豆包对话 - 优先使用专属 API'),
-      oasis: Schema.boolean().default(false).description('绿洲 - 优先使用专属 API'),
-      wechat_channel: Schema.boolean().default(false).description('视频号 - 优先使用专属 API'),
-    }).description('各平台独立开关：是否优先使用专属 API'),
+      bilibili: Schema.boolean().default(false).description('哔哩哔哩'),
+      douyin: Schema.boolean().default(false).description('抖音'),
+      kuaishou: Schema.boolean().default(false).description('快手'),
+      xiaohongshu: Schema.boolean().default(false).description('小红书'),
+      weibo: Schema.boolean().default(false).description('微博'),
+      xigua: Schema.boolean().default(false).description('西瓜视频'),
+      youtube: Schema.boolean().default(false).description('YouTube'),
+      tiktok: Schema.boolean().default(false).description('TikTok'),
+      acfun: Schema.boolean().default(false).description('AcFun'),
+      zhihu: Schema.boolean().default(false).description('知乎'),
+      weishi: Schema.boolean().default(false).description('微视'),
+      huya: Schema.boolean().default(false).description('虎牙'),
+      haokan: Schema.boolean().default(false).description('好看视频'),
+      meipai: Schema.boolean().default(false).description('美拍'),
+      twitter: Schema.boolean().default(false).description('Twitter/X'),
+      instagram: Schema.boolean().default(false).description('Instagram'),
+      doubao: Schema.boolean().default(false).description('豆包'),
+      doubao_chat: Schema.boolean().default(false).description('豆包对话'),
+      oasis: Schema.boolean().default(false).description('绿洲'),
+      wechat_channel: Schema.boolean().default(false).description('视频号'),
+    }).description('优先使用专属 API'),
     customApis: Schema.array(
       Schema.object({
         platform: Schema.union([
@@ -171,18 +176,18 @@ export const Config = Schema.intersect([
           Schema.const('doubao_chat').description('豆包对话'),
           Schema.const('oasis').description('绿洲'),
           Schema.const('wechat_channel').description('视频号'),
-        ]).description('选择平台'),
+        ]).description('平台'),
         apiUrl: Schema.string().description('API 地址'),
-        apiKey: Schema.string().description('API Key（可选）').default(''),
+        apiKey: Schema.string().description('API Key').default(''),
         authHeaderType: Schema.union([
-          Schema.const('Bearer').description('Bearer Token'),
+          Schema.const('Bearer').description('Bearer'),
           Schema.const('X-API-Key').description('X-API-Key'),
-          Schema.const('Custom').description('自定义 Header 名称'),
+          Schema.const('Custom').description('自定义'),
         ]).default('Bearer').description('认证头类型'),
-        customHeaderName: Schema.string().description('自定义 Header 名称（仅当选择 Custom 时有效）').default('X-API-Key'),
-        fieldMapping: Schema.string().role('textarea').default('{}').description('字段映射 JSON，例如 {"title":"data.info.name"}，支持点号路径'),
+        customHeaderName: Schema.string().default('X-API-Key').description('自定义头名称'),
+        fieldMapping: Schema.string().role('textarea').default('{}').description('字段映射 JSON'),
       })
-    ).default([]).description('自定义平台专属 API 地址，留空则使用内置默认专属 API'),
+    ).default([]).description('自定义专属 API'),
     globalFieldMapping: Schema.string().role('textarea').default(
       '{\n' +
       '  "title": "data.title",\n' +
@@ -207,16 +212,16 @@ export const Config = Schema.intersect([
       '  "music_cover": "data.music.cover",\n' +
       '  "music_url": "data.music.url"\n' +
       '}'
-    ).description('全局字段映射 JSON，优先级低于专属 API 映射'),
-  }).description('API 选择设置'),
+    ).description('全局字段映射 JSON'),
+  }).description('API 选择'),
 
   Schema.object({
-    waitingTipText: Schema.string().default('正在解析视频，请稍候...').description('解析等待提示文字'),
-    unsupportedPlatformText: Schema.string().default('不支持该平台链接').description('不支持的平台提示文字'),
-    invalidLinkText: Schema.string().default('无效的视频链接').description('无效链接提示（parse 指令）'),
-    parseErrorPrefix: Schema.string().default('❌ 解析失败：').description('解析失败消息前缀'),
-    parseErrorItemFormat: Schema.string().default('【${url}】: ${msg}').description('每条解析失败的展示格式，可用 ${url}（链接）和 ${msg}（错误信息）'),
-  }).description('界面文字设置'),
+    waitingTipText: Schema.string().default('正在解析视频，请稍候...').description('等待提示'),
+    unsupportedPlatformText: Schema.string().default('不支持该平台链接').description('不支持提示'),
+    invalidLinkText: Schema.string().default('无效的视频链接').description('无效链接提示'),
+    parseErrorPrefix: Schema.string().default('❌ 解析失败：').description('错误前缀'),
+    parseErrorItemFormat: Schema.string().default('【${url}】: ${msg}').description('错误项格式'),
+  }).description('界面文字'),
 ])
 
 interface VideoQuality {
@@ -564,7 +569,6 @@ function generateFormattedText(p: ParsedData, format: string): string {
     '发布时间': p.publishTime ? formatPublishTime(p.publishTime) : '',
     '图片数量': String(imageCount),
     '作者ID': p.uid,
-    '封面': p.cover,
     '视频链接': p.video,
     '音乐标题': p.music.title || '',
     '音乐作者': p.music.author || '',
@@ -763,6 +767,194 @@ export function apply(ctx: Context, config: any) {
     }
   }
 
+  async function downloadImageFile(imageUrl: string): Promise<string> {
+    if (!imageUrl) throw new Error('图片链接为空')
+    const imgTempDir = config.imageTempDir || './temp_images'
+    await fs.mkdir(imgTempDir, { recursive: true })
+    const ext = imageUrl.match(/\.(png|jpg|jpeg|gif|webp)(\?|$)/i)?.[1] || 'jpg'
+    const fileName = `img_${Date.now()}_${randomBytes(4).toString('hex')}.${ext}`
+    const filePath = path.resolve(imgTempDir, fileName)
+    const writer = createWriteStream(filePath)
+    let response
+    try {
+      response = await http({
+        method: 'GET',
+        url: imageUrl,
+        responseType: 'stream',
+        timeout: config.imageDownloadTimeout || 60000,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': 'https://www.baidu.com/' },
+        maxRedirects: 5,
+        validateStatus: (status: number) => status >= 200 && status < 300,
+      })
+    } catch (e) {
+      writer.destroy()
+      await fs.unlink(filePath).catch(() => {})
+      throw new Error(`下载图片失败: ${getErrorMessage(e)}`)
+    }
+    const maxSizeBytes = (config.maxImageSize ?? 0) * 1024 * 1024
+    const contentLength = Number(response.headers['content-length'] || 0)
+    if (maxSizeBytes > 0 && contentLength > maxSizeBytes) {
+      writer.destroy()
+      await fs.unlink(filePath).catch(() => {})
+      throw new Error(`图片文件过大(${Math.round(contentLength/1024/1024)}MB)，超过限制(${config.maxImageSize}MB)`)
+    }
+    try {
+      await pipeline(response.data, writer)
+      return filePath
+    } catch (e) {
+      await fs.unlink(filePath).catch(() => {})
+      throw new Error(`写入图片文件失败: ${getErrorMessage(e)}`)
+    }
+  }
+
+  async function sendImage(session: any, imageUrl: string): Promise<void> {
+    if (!config.showCoverImage) return
+    const sendLink = async () => { await sendWithTimeout(session, `图片链接：${imageUrl}`).catch(() => {}) }
+    if (config.forceDownloadImage) {
+      try {
+        const localPath = await downloadImageFile(imageUrl)
+        await sendWithTimeout(session, h.image(`file://${localPath}`))
+        return
+      } catch (e) {
+        debugLog('ERROR', '强制下载图片失败，尝试URL发送:', getErrorMessage(e))
+        try {
+          await sendWithTimeout(session, h.image(imageUrl))
+          return
+        } catch { await sendLink() }
+      }
+      return
+    }
+    if (!config.showImageFile) {
+      await sendLink()
+      return
+    }
+    try {
+      await sendWithTimeout(session, h.image(imageUrl))
+    } catch {
+      try {
+        const localPath = await downloadImageFile(imageUrl)
+        await sendWithTimeout(session, h.image(`file://${localPath}`))
+      } catch { await sendLink() }
+    }
+  }
+
+  async function sendVideoFile(session: any, videoUrl: string): Promise<any> {
+    if (!videoUrl) return
+    if (!config.showVideoFile) return await sendWithTimeout(session, `视频链接：${videoUrl}`)
+    const sendLink = async () => { await sendWithTimeout(session, `视频链接：${videoUrl}`).catch(() => {}) }
+    if (config.forceDownloadVideo) {
+      try {
+        const tempFilePath = await downloadVideoFile(videoUrl)
+        await sendWithTimeout(session, h.video(`file://${tempFilePath}`))
+        return
+      } catch (e) {
+        debugLog('ERROR', '强制下载视频失败，尝试URL发送:', getErrorMessage(e))
+        try {
+          await sendWithTimeout(session, h.video(videoUrl))
+          return
+        } catch { await sendLink() }
+      }
+      return
+    }
+    try {
+      await sendWithTimeout(session, h.video(videoUrl))
+    } catch {
+      try {
+        const tempFilePath = await downloadVideoFile(videoUrl)
+        await sendWithTimeout(session, h.video(`file://${tempFilePath}`))
+      } catch { await sendLink() }
+    }
+  }
+
+  async function flush(session: any, matches: LinkMatch[]) {
+    debugLog('INFO', `开始解析 ${matches.length} 个链接`)
+    const items: { text: string; parsed: ParsedData }[] = []
+    const errors: string[] = []
+    const limiter = new ConcurrencyLimiter(config.maxConcurrent || 3)
+    const promises = matches.map(async (match) => {
+      await limiter.acquire()
+      try {
+        if (config.deduplicationInterval > 0) {
+          const lastTime = dedupCache.get(match.url)
+          if (lastTime && (Date.now() - lastTime < config.deduplicationInterval * 1000)) {
+            debugLog('INFO', `跳过重复链接: ${match.url}`)
+            const shortUrl = match.url.length > 50 ? match.url.slice(0, 50) + '...' : match.url
+            await sendWithTimeout(session, `链接 ${shortUrl} 在最近 ${config.deduplicationInterval} 秒内已解析过，已跳过。`).catch(() => {})
+            return
+          }
+        }
+        debugLog('INFO', `解析链接: ${match.url} (${match.type})`)
+        const fieldMapping = getPlatformConfig(match.type).fieldMapping
+        const result = await processSingleUrl(match.url, match.type, fieldMapping)
+        if (result.success) {
+          items.push(result.data)
+          if (config.deduplicationInterval > 0) dedupCache.set(match.url, Date.now())
+        } else {
+          const item = texts.parseErrorItemFormat.replace(/\$\{url\}/g, match.url.length > 50 ? match.url.slice(0,50)+'...' : match.url).replace(/\$\{msg\}/g, result.msg)
+          errors.push(item)
+        }
+      } finally {
+        limiter.release()
+      }
+    })
+    await Promise.all(promises)
+
+    if (errors.length) await sendWithTimeout(session, `${texts.parseErrorPrefix}\n${errors.join('\n')}`)
+    if (!items.length) return
+
+    const enableForward = config.enableForward && session.platform === 'onebot'
+    const botName = config.botName || '视频解析机器人'
+    if (enableForward) {
+      const forwardMessages: any[] = []
+      for (const item of items) {
+        const p = item.parsed
+        const text = item.text
+        if (text && config.showImageText) forwardMessages.push(buildForwardNode(session, text, botName))
+        if (p.cover && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
+          forwardMessages.push(buildForwardNode(session, h.image(p.cover), botName))
+        }
+        if (p.type === 'image' || p.type === 'live_photo' || (p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
+          const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? [])
+          for (const imgUrl of imageUrls) forwardMessages.push(buildForwardNode(session, h.image(imgUrl), botName))
+        }
+        if (p.video) forwardMessages.push(buildForwardNode(session, h.video(p.video), botName))
+      }
+      if (forwardMessages.length) {
+        try {
+          await sendWithTimeout(session, h('message', { forward: true }, forwardMessages.slice(0, 100)), config.retryTimes)
+        } catch (err) {
+          debugLog('ERROR', '合并转发失败，降级逐条发送:', err)
+          for (const node of forwardMessages) {
+            await sendWithTimeout(session, node.data.content).catch(() => {})
+            await delay(300)
+          }
+        }
+      }
+    } else {
+      for (const item of items) {
+        const p = item.parsed
+        const text = item.text
+        if (text && config.showImageText) { await sendWithTimeout(session, text); await delay(300) }
+        if (p.cover && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
+          await sendImage(session, p.cover).catch(() => {})
+          await delay(300)
+        }
+        if (p.video && (p.type === 'video' || (p.type === 'live' && !p.live_photo?.length && !p.images?.length))) {
+          await sendVideoFile(session, p.video)
+          await delay(500)
+        }
+        if (p.type === 'image' || p.type === 'live_photo' || (p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
+          const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? [])
+          for (const imgUrl of imageUrls) {
+            await sendImage(session, imgUrl).catch(() => {})
+            await delay(200)
+          }
+        }
+      }
+    }
+    debugLog('INFO', '处理完成')
+  }
+
   async function fetchApi(url: string, type: string, fieldMapping?: Record<string, string>): Promise<ParsedData> {
     const cacheKey = url
     const cached = urlCacheLocal.get(cacheKey)
@@ -863,116 +1055,6 @@ export function apply(ctx: Context, config: any) {
     return null
   }
 
-  async function sendVideoFile(session: any, videoUrl: string): Promise<any> {
-    if (!videoUrl) return
-    if (!config.showVideoFile) return await sendWithTimeout(session, `视频链接：${videoUrl}`)
-    const sendLink = async () => { await sendWithTimeout(session, `视频链接：${videoUrl}`).catch(() => {}) }
-    if (config.forceDownloadVideo) {
-      try {
-        const tempFilePath = await downloadVideoFile(videoUrl)
-        await sendWithTimeout(session, h.video(`file://${tempFilePath}`))
-        return
-      } catch (e) {
-        debugLog('ERROR', '强制下载失败，尝试URL发送:', getErrorMessage(e))
-        try {
-          await sendWithTimeout(session, h.video(videoUrl))
-          return
-        } catch { await sendLink() }
-      }
-      return
-    }
-    try {
-      await sendWithTimeout(session, h.video(videoUrl))
-    } catch {
-      try {
-        const tempFilePath = await downloadVideoFile(videoUrl)
-        await sendWithTimeout(session, h.video(`file://${tempFilePath}`))
-      } catch { await sendLink() }
-    }
-  }
-
-  async function flush(session: any, matches: LinkMatch[]) {
-    debugLog('INFO', `开始解析 ${matches.length} 个链接`)
-    const items: { text: string; parsed: ParsedData }[] = []
-    const errors: string[] = []
-    const limiter = new ConcurrencyLimiter(config.maxConcurrent || 3)
-    const promises = matches.map(async (match) => {
-      await limiter.acquire()
-      try {
-        if (config.deduplicationInterval > 0) {
-          const lastTime = dedupCache.get(match.url)
-          if (lastTime && (Date.now() - lastTime < config.deduplicationInterval * 1000)) {
-            debugLog('INFO', `跳过重复链接: ${match.url}`)
-            const shortUrl = match.url.length > 50 ? match.url.slice(0, 50) + '...' : match.url
-            await sendWithTimeout(session, `链接 ${shortUrl} 在最近 ${config.deduplicationInterval} 秒内已解析过，已跳过。`).catch(() => {})
-            return
-          }
-        }
-        debugLog('INFO', `解析链接: ${match.url} (${match.type})`)
-        const fieldMapping = getPlatformConfig(match.type).fieldMapping
-        const result = await processSingleUrl(match.url, match.type, fieldMapping)
-        if (result.success) {
-          items.push(result.data)
-          if (config.deduplicationInterval > 0) dedupCache.set(match.url, Date.now())
-        } else {
-          const item = texts.parseErrorItemFormat.replace(/\$\{url\}/g, match.url.length > 50 ? match.url.slice(0,50)+'...' : match.url).replace(/\$\{msg\}/g, result.msg)
-          errors.push(item)
-        }
-      } finally {
-        limiter.release()
-      }
-    })
-    await Promise.all(promises)
-
-    if (errors.length) await sendWithTimeout(session, `${texts.parseErrorPrefix}\n${errors.join('\n')}`)
-    if (!items.length) return
-
-    const enableForward = config.enableForward && session.platform === 'onebot'
-    const botName = config.botName || '视频解析机器人'
-    if (enableForward) {
-      const forwardMessages: any[] = []
-      for (const item of items) {
-        const p = item.parsed
-        const text = item.text
-        if (text && config.showImageText) forwardMessages.push(buildForwardNode(session, text, botName))
-        if (config.showCoverImage && p.cover && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) forwardMessages.push(buildForwardNode(session, h.image(p.cover), botName))
-        if (p.type === 'image' || p.type === 'live_photo' || (p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
-          const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? [])
-          for (const imgUrl of imageUrls) forwardMessages.push(buildForwardNode(session, h.image(imgUrl), botName))
-        }
-        if (p.video) forwardMessages.push(buildForwardNode(session, h.video(p.video), botName))
-      }
-      if (forwardMessages.length) {
-        try {
-          await sendWithTimeout(session, h('message', { forward: true }, forwardMessages.slice(0, 100)), config.retryTimes)
-        } catch (err) {
-          debugLog('ERROR', '合并转发失败，降级逐条发送:', err)
-          for (const node of forwardMessages) {
-            await sendWithTimeout(session, node.data.content).catch(() => {})
-            await delay(300)
-          }
-        }
-      }
-    } else {
-      for (const item of items) {
-        const p = item.parsed
-        const text = item.text
-        if (text && config.showImageText) { await sendWithTimeout(session, text); await delay(300) }
-        if (config.showCoverImage && p.cover && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) { await sendWithTimeout(session, h.image(p.cover)).catch(() => {}); await delay(300) }
-        if (p.video && (p.type === 'video' || (p.type === 'live' && !p.live_photo?.length && !p.images?.length))) {
-          if (config.showVideoFile) await sendVideoFile(session, p.video)
-          else await sendWithTimeout(session, `视频链接：${p.video}`)
-          await delay(500)
-        }
-        if (p.type === 'image' || p.type === 'live_photo' || (p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
-          const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? [])
-          for (const imgUrl of imageUrls) { await sendWithTimeout(session, h.image(imgUrl)).catch(() => {}); await delay(200) }
-        }
-      }
-    }
-    debugLog('INFO', '处理完成')
-  }
-
   ctx.on('message', async (session) => {
     if (!config.enable) return
     if (session.subtype === 'file_upload') return
@@ -995,18 +1077,18 @@ export function apply(ctx: Context, config: any) {
 
   const tempCleanupInterval = setInterval(async () => {
     try {
-      const tempDir = config.tempDir || './temp_videos'
-      const files = await fs.readdir(tempDir)
-      const now = Date.now()
-      let deleted = 0
-      for (const file of files) {
-        if (file.startsWith('video_') && file.endsWith('.mp4')) {
-          const filePath = path.join(tempDir, file)
-          const stats = await fs.stat(filePath)
-          if (now - stats.mtimeMs > 3600000) { await fs.unlink(filePath).catch(() => {}); deleted++ }
+      const dirs = [config.tempDir || './temp_videos', config.imageTempDir || './temp_images']
+      for (const dir of dirs) {
+        const files = await fs.readdir(dir)
+        const now = Date.now()
+        for (const file of files) {
+          if ((file.startsWith('video_') && file.endsWith('.mp4')) || (file.startsWith('img_') && file.match(/\.(png|jpg|jpeg|gif|webp)$/i))) {
+            const filePath = path.join(dir, file)
+            const stats = await fs.stat(filePath)
+            if (now - stats.mtimeMs > 3600000) { await fs.unlink(filePath).catch(() => {}) }
+          }
         }
       }
-      if (deleted) debugLog('INFO', `清理了 ${deleted} 个过期临时视频文件`)
     } catch (e) { debugLog('WARN', '清理临时文件失败:', e) }
   }, 3600000)
 
@@ -1019,10 +1101,14 @@ export function apply(ctx: Context, config: any) {
 
   process.on('beforeExit', async () => {
     try {
-      const tempDir = config.tempDir || './temp_videos'
-      const files = await fs.readdir(tempDir)
-      for (const file of files) {
-        if (file.startsWith('video_') && file.endsWith('.mp4')) await fs.unlink(path.join(tempDir, file)).catch(() => {})
+      const dirs = [config.tempDir || './temp_videos', config.imageTempDir || './temp_images']
+      for (const dir of dirs) {
+        const files = await fs.readdir(dir)
+        for (const file of files) {
+          if ((file.startsWith('video_') && file.endsWith('.mp4')) || (file.startsWith('img_') && file.match(/\.(png|jpg|jpeg|gif|webp)$/i))) {
+            await fs.unlink(path.join(dir, file)).catch(() => {})
+          }
+        }
       }
     } catch {}
   })

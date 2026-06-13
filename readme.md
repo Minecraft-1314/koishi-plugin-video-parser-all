@@ -31,95 +31,100 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 ### 统一消息格式 (Unified Message Format)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `unifiedMessageFormat` | string | `标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n音乐封面：${音乐封面}\n音乐链接：${音乐链接}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}` | 自定义解析结果的输出格式，支持变量替换。某行所有变量均为空（或为"0"）时自动隐藏该行 |
+| `unifiedMessageFormat` | string | `标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n音乐封面：${音乐封面}\n音乐链接：${音乐链接}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}` | 文字消息格式，支持变量替换。空行自动隐藏。封面及媒体由独立开关控制，默认不包含在文字中 |
 
 ### 内容显示设置 (Content Display Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `showImageText` | boolean | true | 是否发送解析后的文字内容 |
-| `showCoverImage` | boolean | true | 是否发送封面图片（关闭后不再自动发送封面） |
-| `showVideoFile` | boolean | true | 是否发送视频文件（关闭则只发送视频链接） |
-| `maxDescLength` | number | 200 | 简介内容最大长度（字符），超出自动截断 |
+| `showImageText` | boolean | true | 是否发送文字内容 |
+| `showCoverImage` | boolean | true | 是否发送封面图片 |
+| `showImageFile` | boolean | true | 封面/图片是否以文件形式发送（关闭则只发链接） |
+| `forceDownloadImage` | boolean | false | 强制下载封面/图片后发送 |
+| `imageDownloadTimeout` | number | 60000 | 图片下载超时（毫秒） |
+| `imageTempDir` | string | `./temp_images` | 临时封面/图片存储目录 |
+| `maxImageSize` | number | 0 | 最大下载图片大小（MB），0 不限制 |
+| `showVideoFile` | boolean | true | 视频是否以文件形式发送（关闭则只发链接） |
+| `forceDownloadVideo` | boolean | false | 强制下载视频后发送 |
 | `videoDownloadTimeout` | number | 120000 | 视频下载超时（毫秒） |
 | `tempDir` | string | `./temp_videos` | 临时视频存储目录 |
-| `maxVideoSize` | number | 0 | 最大下载视频大小（MB），0 为不限制大小 |
-| `forceDownloadVideo` | boolean | false | 强制下载视频后发送 |
-| `maxConcurrent` | number | 3 | 批量解析时最大并发数，避免同时下载过多 |
+| `maxVideoSize` | number | 0 | 最大下载视频大小（MB），0 不限制 |
+| `maxDescLength` | number | 200 | 简介最大长度（字符） |
+| `maxConcurrent` | number | 3 | 批量解析最大并发数 |
 
 ### 网络与 API 设置 (Network & API Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `timeout` | number | 180000 | API 请求超时时间（毫秒） |
-| `videoSendTimeout` | number | 60000 | 视频消息发送超时时间（毫秒，0 为不限制） |
-| `userAgent` | string | `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36` | API 请求使用的 User-Agent |
-| `proxy` | object | `{ enabled: false, protocol: "http", host: "127.0.0.1", port: 7890, auth: { username: "", password: "" } }` | HTTP/HTTPS 代理设置。`enabled` 开关（默认关闭），`protocol` 下拉选择 `http` 或 `https`。需开启 `enabled` 并填写 `host` 后生效 |
-| `customHeaders` | array | [] | 自定义请求头，会附加到所有 API 请求中。每项包含 `name`（头名称）和 `value`（头值） |
+| `videoSendTimeout` | number | 60000 | 消息发送超时时间（毫秒，0 为不限制） |
+| `userAgent` | string | `Mozilla/5.0 ...` | User-Agent |
+| `proxy` | object | `{ enabled: false, protocol: "http", host: "127.0.0.1", port: 7890, auth: { username: "", password: "" } }` | HTTP/HTTPS 代理。`enabled` 开关（默认关闭），`protocol` 下拉选择 `http` 或 `https` |
+| `customHeaders` | array | [] | 自定义请求头，每项含 `name` 和 `value` |
 
 ### API 选择与回退设置 (API Selection & Fallback)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `primaryApiUrl` | string | `https://api.bugpk.com/api/short_videos` | 主 API 地址，解析时优先使用 |
-| `backupApiUrl` | string | `https://api.bugpk.com/api/svparse` | 备用主 API 地址，仅支持抖音、小红书、Instagram、即梦平台解析 |
-| `platformDedicatedFirst` | object | 各平台均为 `false` | 各平台独立开关：是否优先使用平台专属 API。对象键为平台标识（英文），值为布尔值。支持的键：`bilibili`、`douyin`、`kuaishou`、`xiaohongshu`、`weibo`、`xigua`、`youtube`、`tiktok`、`acfun`、`zhihu`、`weishi`、`huya`、`haokan`、`meipai`、`twitter`、`instagram`、`doubao`、`doubao_chat`、`oasis`、`wechat_channel` |
-| `customApis` | array | [] | 自定义平台专属 API 列表。每项包含：`platform`（平台类型）、`apiUrl`（API 地址）、`apiKey`（API Key，可选）、`authHeaderType`（认证头类型，可选：`Bearer` / `X-API-Key` / `Custom`）、`customHeaderName`（自定义 Header 名称，仅当 `authHeaderType` 为 `Custom` 时有效）、`fieldMapping`（字段映射 JSON 字符串，用于适配非标准 API 响应，支持点号路径） |
-| `globalFieldMapping` | string | 预设完整字段映射JSON（见下方示例） | 全局字段映射 JSON，优先级低于专属 API 映射。用于统一适配所有平台的 API 响应格式，默认已包含常用路径示例 |
+| `primaryApiUrl` | string | `https://api.bugpk.com/api/short_videos` | 主 API 地址 |
+| `backupApiUrl` | string | `https://api.bugpk.com/api/svparse` | 备用主 API，仅支持部分平台 |
+| `platformDedicatedFirst` | object | 各平台均为 `false` | 平台专属 API 优先开关，键：`bilibili` 等 |
+| `customApis` | array | [] | 自定义平台专属 API，含 `platform`, `apiUrl`, `apiKey`, `authHeaderType`, `customHeaderName`, `fieldMapping` |
+| `globalFieldMapping` | string | 预设字段映射 JSON | 全局字段映射，支持点号路径 |
 
 ### 错误与重试设置 (Error & Retry Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `ignoreSendError` | boolean | true | 是否忽略消息发送失败，避免插件崩溃 |
-| `retryTimes` | number | 3 | API 请求及消息发送失败时的重试次数 |
-| `retryInterval` | number | 1000 | API 请求及消息发送重试的间隔时间（毫秒） |
+| `ignoreSendError` | boolean | true | 忽略发送失败 |
+| `retryTimes` | number | 3 | 重试次数 |
+| `retryInterval` | number | 1000 | 重试间隔（毫秒） |
 
 ### 发送方式设置 (Send Mode Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `enableForward` | boolean | false | 是否启用合并转发（仅 OneBot 平台），启用后视频与图文将整合进同一条合并消息 |
+| `enableForward` | boolean | false | 启用合并转发（仅 OneBot 平台） |
 
 ### 缓存与去重设置 (Cache & Deduplication Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `deduplicationInterval` | number | 180 | 禁止重复解析时间间隔（秒），0 为不限制。同一个链接在间隔内不会重复解析。 |
-| `cacheTTL` | number | 600 | 解析结果缓存时间（秒），0 为不缓存。缓存可减少重复 API 请求。 |
+| `deduplicationInterval` | number | 180 | 去重间隔（秒） |
+| `cacheTTL` | number | 600 | 缓存时间（秒） |
 
 ### 界面文字设置 (UI Text Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `waitingTipText` | string | 正在解析视频，请稍候... | 解析等待提示文字 |
-| `unsupportedPlatformText` | string | 不支持该平台链接 | 不支持的平台提示 |
-| `invalidLinkText` | string | 无效的视频链接 | 无效链接提示（parse 指令） |
-| `parseErrorPrefix` | string | ❌ 解析失败： | 解析失败消息前缀 |
-| `parseErrorItemFormat` | string | `【${url}】: ${msg}` | 每条解析失败的展示格式，可用 ${url}（链接）和 ${msg}（错误信息） |
+| `waitingTipText` | string | 正在解析视频，请稍候... | 等待提示 |
+| `unsupportedPlatformText` | string | 不支持该平台链接 | 不支持平台提示 |
+| `invalidLinkText` | string | 无效的视频链接 | 无效链接提示 |
+| `parseErrorPrefix` | string | ❌ 解析失败： | 错误前缀 |
+| `parseErrorItemFormat` | string | `【${url}】: ${msg}` | 错误项格式 |
 
 ## 支持的变量 (Supported Variables)
-在 `unifiedMessageFormat` 中可使用以下变量进行自定义格式化，某行所有变量均为空（或为"0"）时该行不显示：
+在 `unifiedMessageFormat` 中可使用以下变量，空行自动隐藏：
 
-| 变量名 | 说明 | 适用平台 |
-|--------|------|----------|
-| `${标题}` | 视频/图集标题 | 所有平台 |
-| `${作者}` | 作者/发布者名称 | 所有平台 |
-| `${简介}` | 内容简介/描述 | 所有平台 |
-| `${视频时长}` | 视频时长（时:分:秒） | 视频 |
-| `${点赞数}` | 点赞数量 | 所有平台 |
-| `${收藏数}` | 收藏数量 | 所有平台 |
-| `${转发数}` | 转发/分享数量 | 所有平台 |
-| `${播放数}` | 播放量 | 部分平台 |
-| `${评论数}` | 评论数量 | 所有平台 |
-| `${发布时间}` | 发布时间（格式化） | 所有平台 |
-| `${图片数量}` | 图集/实况图片数量 | 图集/实况 |
-| `${作者ID}` | 作者唯一标识ID | 部分平台 |
-| `${视频链接}` | 视频原始链接 | 视频 |
-| `${音乐标题}` | 音乐标题 | 部分平台 |
-| `${音乐作者}` | 音乐作者 | 部分平台 |
-| `${音乐封面}` | 音乐封面图片地址 | 部分平台 |
-| `${音乐链接}` | 音乐原始链接 | 部分平台 |
+| 变量名 | 说明 |
+|--------|------|
+| `${标题}` | 视频/图集标题 |
+| `${作者}` | 作者名称 |
+| `${简介}` | 内容简介 |
+| `${视频时长}` | 视频时长（时:分:秒） |
+| `${点赞数}` | 点赞数量 |
+| `${收藏数}` | 收藏数量 |
+| `${转发数}` | 转发/分享数量 |
+| `${播放数}` | 播放量 |
+| `${评论数}` | 评论数量 |
+| `${发布时间}` | 发布时间（格式化） |
+| `${图片数量}` | 图集/实况图片数量 |
+| `${作者ID}` | 作者唯一标识ID |
+| `${视频链接}` | 视频原始链接 |
+| `${音乐标题}` | 音乐标题 |
+| `${音乐作者}` | 音乐作者 |
+| `${音乐封面}` | 音乐封面图片地址 |
+| `${音乐链接}` | 音乐原始链接 |
 
-> 注：部分变量可能因平台API返回数据不同而显示为空，某行所有变量为空（或为"0"）时该行会自动隐藏。
+> 注：封面图片由独立开关控制，不会出现在文字消息中。
 
 ## 支持的平台 (Supported Platforms)
 | 平台名称 | 关键词识别 | 解析能力 |
 |----------|------------|----------|
-| 哔哩哔哩 (B站) | bilibili, b23.tv, bilibili.com | 视频（不含番剧/直播/图文） |
+| 哔哩哔哩 (B站) | bilibili, b23.tv, bilibili.com | 视频 |
 | 抖音 | douyin, v.douyin.com | 短视频、图集、实况 |
 | 快手 | kuaishou, v.kuaishou.com | 短视频、图集 |
 | 小红书 | xiaohongshu, xhslink.com | 图文、视频 |
@@ -146,17 +151,17 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | 绿洲 (Oasis) | oasis.weibo.com | 视频、图文 |
 | 视频号 (WeChat Channels) | channels.weixin.qq.com, weixin.qq.com/sph/ | 短视频 |
 
-> 注：部分平台解析能力可能因API限制有所差异，具体以实际解析结果为准。
+> 注：部分平台解析能力可能因API限制有所差异。
 
 ## 项目贡献者 (Contributors)
 
 | 贡献者 (Contributor) | 贡献内容 (Contribution) |
 |----------------------|-------------------------|
-| Minecraft-1314 | 插件完整开发 (Complete plugin development) |
-| ShiraiKuroko003 | 修复消息格式设置问题并且PR-1.2.5版本已修复 |
-| cyavb | 提交功能建议-给自定义API添加KEY认证-已修复 |
-| Keep785 | 提交Bug-无法正常关闭发送封面-已修复 |
-| dzt2008 + Apricityx | 提交Bug-会对非支持视频平台URL进行误解析-已修复 |
+| Minecraft-1314 | 插件完整开发 |
+| ShiraiKuroko003 | 修复消息格式问题 |
+| cyavb | 自定义API KEY认证 |
+| Keep785 | 无法关闭发送封面 |
+| dzt2008 + Apricityx | 误解析修复 |
 | JH-Ahua | BugPk-Api 支持 |
 | shangxue | 灵感来源 |
 
@@ -170,6 +175,6 @@ This project is licensed under the MIT License, see the [LICENSE](LICENSE) file 
 
 ## 支持我们 (Support Us)
 
-如果这个项目对您有帮助，欢迎点亮右上角的 Star ⭐ 支持我们，这将是对所有贡献者最大的鼓励！
+如果这个项目对您有帮助，欢迎点亮右上角的 Star ⭐ 支持我们！
 
-If this project is helpful to you, please feel free to star it in the upper right corner ⭐ to support us, which will be the greatest encouragement to all contributors!
+If this project is helpful to you, please feel free to star it in the upper right corner ⭐ to support us!
