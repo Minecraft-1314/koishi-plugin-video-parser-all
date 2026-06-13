@@ -68,7 +68,7 @@ export const Config = Schema.intersect([
   Schema.object({
     unifiedMessageFormat: Schema.string().role('textarea').default(
       '标题：${标题}\n作者：${作者}\n简介：${简介}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}'
-    ).description('统一消息格式，可用变量：${标题} ${作者} ${简介} ${点赞数} ${收藏数} ${转发数} ${播放数} ${评论数} ${视频时长} ${发布时间} ${图片数量} ${作者ID}'),
+    ).description('统一消息格式，可用变量：${标题} ${作者} ${简介} ${点赞数} ${收藏数} ${转发数} ${播放数} ${评论数} ${视频时长} ${发布时间} ${图片数量} ${作者ID} ${音乐标题} ${音乐作者} ${音乐封面} ${音乐链接}'),
   }).description('消息格式设置'),
 
   Schema.object({
@@ -89,7 +89,10 @@ export const Config = Schema.intersect([
     userAgent: Schema.string().default('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36').description('API 请求 UA'),
     proxy: Schema.object({
       enabled: Schema.boolean().default(false).description('是否启用 HTTP/HTTPS 代理'),
-      protocol: Schema.string().default('http').description('代理协议 (http 或 https)'),
+      protocol: Schema.union([
+        Schema.const('http').description('HTTP'),
+        Schema.const('https').description('HTTPS'),
+      ]).default('http').description('代理协议'),
       host: Schema.string().default('127.0.0.1').description('代理地址'),
       port: Schema.number().default(7890).description('代理端口'),
       auth: Schema.object({
@@ -141,6 +144,7 @@ export const Config = Schema.intersect([
       twitter: Schema.boolean().default(false).description('Twitter/X - 优先使用专属 API'),
       instagram: Schema.boolean().default(false).description('Instagram - 优先使用专属 API'),
       doubao: Schema.boolean().default(false).description('豆包 - 优先使用专属 API'),
+      doubao_chat: Schema.boolean().default(false).description('豆包图片 - 优先使用专属 API'),
       oasis: Schema.boolean().default(false).description('绿洲 - 优先使用专属 API'),
       wechat_channel: Schema.boolean().default(false).description('视频号 - 优先使用专属 API'),
     }).description('各平台独立开关：是否优先使用专属 API'),
@@ -164,6 +168,7 @@ export const Config = Schema.intersect([
           Schema.const('twitter').description('Twitter/X'),
           Schema.const('instagram').description('Instagram'),
           Schema.const('doubao').description('豆包'),
+          Schema.const('doubao_chat').description('豆包图片'),
           Schema.const('oasis').description('绿洲'),
           Schema.const('wechat_channel').description('视频号'),
         ]).description('选择平台'),
@@ -291,6 +296,7 @@ const LINK_RULES: { pattern: RegExp; type: string }[] = [
   { pattern: /https?:\/\/x\.com\/\w+\/status\/\d{10,}/gi, type: 'twitter' },
   { pattern: /https?:\/\/(?:www\.)?instagram\.com\/p\/[0-9a-zA-Z_-]{10,}/gi, type: 'instagram' },
   { pattern: /https?:\/\/(?:www\.)?doubao\.com\/video\/\d{10,}/gi, type: 'doubao' },
+  { pattern: /https?:\/\/(?:www\.)?doubao\.com\/thread\/[0-9a-zA-Z_-]+/gi, type: 'doubao_chat' },
   { pattern: /https?:\/\/(?:www\.)?oasis\.weibo\.com\/v\/[0-9a-zA-Z_-]+/gi, type: 'oasis' },
   { pattern: /https?:\/\/channels\.weixin\.qq\.com\/[0-9a-zA-Z_-]+/gi, type: 'wechat_channel' },
   { pattern: /https?:\/\/weixin\.qq\.com\/sph\/[0-9a-zA-Z_-]+/gi, type: 'wechat_channel' },
@@ -408,6 +414,22 @@ function getNestedValue(obj: any, path: string): any {
   return current
 }
 
+function parseCount(val: any): number {
+  if (val === undefined || val === null) return 0
+  if (typeof val === 'number') return val
+  const str = String(val).trim()
+  if (str.includes('万')) {
+    const num = parseFloat(str)
+    return isNaN(num) ? 0 : Math.round(num * 10000)
+  }
+  if (str.includes('亿')) {
+    const num = parseFloat(str)
+    return isNaN(num) ? 0 : Math.round(num * 100000000)
+  }
+  const num = parseInt(str, 10)
+  return isNaN(num) ? 0 : num
+}
+
 function parseApiResponse(raw: any, maxDescLen: number, fieldMapping?: Record<string, string>): ParsedData {
   debugLog('DEBUG', 'API raw response', raw)
   const data = raw?.data || {}
@@ -422,7 +444,7 @@ function parseApiResponse(raw: any, maxDescLen: number, fieldMapping?: Record<st
   }
 
   let type = mapField('type', () => {
-    let t = data.type || ''
+    let t = data.type || data.videoType || ''
     if (!t) {
       if (data.images?.length > 0 && !data.url) t = 'image'
       else if (data.live_photo?.length > 0) t = 'live_photo'
@@ -432,15 +454,15 @@ function parseApiResponse(raw: any, maxDescLen: number, fieldMapping?: Record<st
     return t
   })
 
-  const authorObj = mapField('author', () => data.author)
+  let authorObj = mapField('author', () => data.author || data.user)
   let author = '', uid = '', avatar = ''
   if (authorObj && typeof authorObj === 'object') {
     author = authorObj.name || authorObj.author || ''
-    uid = String(authorObj.id || data.uid || '')
+    uid = String(authorObj.id || authorObj.userID || data.uid || data.userID || data.author_id || '')
     avatar = authorObj.avatar || data.avatar || ''
   } else {
     author = mapField('author', () => data.author || data.auther || '')
-    uid = String(mapField('uid', () => data.uid || ''))
+    uid = String(mapField('uid', () => data.uid || data.userID || data.author_id || ''))
     avatar = mapField('avatar', () => data.avatar || '')
   }
 
@@ -467,36 +489,51 @@ function parseApiResponse(raw: any, maxDescLen: number, fieldMapping?: Record<st
       }
     }
   }
+  if (!video && data.quality_urls && typeof data.quality_urls === 'object') {
+    const entries = Object.entries(data.quality_urls)
+    videos = entries.map(([label, url]) => ({ quality: label, url: String(url) }))
+    if (videos.length) video = videos[0].url
+  }
   if (!video) video = mapField('video', () => data.url || '')
   if (video && !video.startsWith('http')) video = 'https:' + video
 
-  const images: string[] = Array.isArray(data.images) ? data.images.filter((img: any) => img && typeof img === 'string').map((img: any) => img.startsWith('http') ? img : 'https:' + img) : []
+  let images: string[] = []
+  const directImages = mapField('images', () => data.images)
+  if (Array.isArray(directImages)) {
+    images = directImages.filter((img: any) => img && typeof img === 'string').map((img: any) => img.startsWith('http') ? img : 'https:' + img)
+  } else if (Array.isArray(data.imgurl)) {
+    images = data.imgurl.filter((img: any) => img && typeof img === 'string').map((img: any) => img.startsWith('http') ? img : 'https:' + img)
+  }
+
   const live_photo = Array.isArray(data.live_photo) ? data.live_photo.filter((lp: any) => lp && lp.image).map((lp: any) => ({
     image: lp.image.startsWith('http') ? lp.image : 'https:' + lp.image,
     video: lp.video ? (lp.video.startsWith('http') ? lp.video : 'https:' + lp.video) : ''
   })) : []
 
+  const musicCoverRaw = mapField('music_cover', () => data.music?.cover || data.music?.albumCover?.url || '')
+  const musicUrlRaw = mapField('music_url', () => data.music?.url || data.music?.playURL || '')
   const music = {
     title: mapField('music_title', () => data.music?.title || data.music?.name || '') as string,
     author: mapField('music_author', () => data.music?.author || data.music?.artist || '') as string,
-    cover: mapField('music_cover', () => data.music?.cover || '') as string,
-    url: mapField('music_url', () => data.music?.url || '') as string,
+    cover: musicCoverRaw ? (String(musicCoverRaw).startsWith('http') ? String(musicCoverRaw) : 'https:' + musicCoverRaw) : '',
+    url: musicUrlRaw ? (String(musicUrlRaw).startsWith('http') ? String(musicUrlRaw) : 'https:' + musicUrlRaw) : '',
   }
 
-  const stats = { ...(data.statistics || {}), ...(extra.statistics || {}) }
-  const like = Number(mapField('like', () => data.like ?? stats.digg_count ?? stats.like_count ?? stats.likes ?? 0))
-  const comment = Number(mapField('comment', () => data.comment ?? stats.comment_count ?? stats.comments ?? stats.comment ?? 0))
-  const collect = Number(mapField('collect', () => data.collect ?? stats.collect_count ?? stats.favorite_count ?? stats.favorites ?? 0))
-  const share = Number(mapField('share', () => data.share ?? stats.share_count ?? stats.forward_count ?? stats.shares ?? 0))
-  const play = Number(mapField('play', () => data.play ?? stats.play_count ?? stats.view_count ?? stats.plays ?? 0))
+  const like = parseCount(mapField('like', () => data.like ?? data.statistics?.digg_count ?? data.statistics?.like_count ?? data.statistics?.likes ?? extra.statistics?.digg_count ?? extra.statistics?.like_count ?? extra.statistics?.likes ?? data.attitudes_count ?? 0))
+  const comment = parseCount(mapField('comment', () => data.comment ?? data.statistics?.comment_count ?? data.statistics?.comments ?? extra.statistics?.comment_count ?? extra.statistics?.comments ?? data.comments_count ?? 0))
+  const collect = parseCount(mapField('collect', () => data.collect ?? data.statistics?.collect_count ?? data.statistics?.favorite_count ?? data.statistics?.favorites ?? extra.statistics?.collect_count ?? extra.statistics?.favorite_count ?? extra.statistics?.favorites ?? data.favorites_count ?? 0))
+  const share = parseCount(mapField('share', () => data.share ?? data.statistics?.share_count ?? data.statistics?.forward_count ?? data.statistics?.shares ?? extra.statistics?.share_count ?? extra.statistics?.forward_count ?? extra.statistics?.shares ?? data.reposts_count ?? 0))
+  const play = parseCount(mapField('play', () => data.play ?? data.statistics?.play_count ?? data.statistics?.view_count ?? data.statistics?.plays ?? extra.statistics?.play_count ?? extra.statistics?.view_count ?? extra.statistics?.plays ?? data.play_count ?? data.view_count ?? 0))
 
   let duration = 0
-  const durRaw = mapField('duration', () => data.duration)
-  if (durRaw) {
-    duration = typeof durRaw === 'string' ? parseInt(durRaw, 10) : Number(durRaw)
-    if (duration > 1000000) duration = Math.floor(duration / 1000)
-  } else if (extra.duration_ms) {
+  if (extra.duration_ms) {
     duration = Math.floor(Number(extra.duration_ms) / 1000)
+  } else {
+    const durRaw = mapField('duration', () => data.duration)
+    if (durRaw) {
+      duration = typeof durRaw === 'string' ? parseInt(durRaw, 10) : Number(durRaw)
+      if (duration > 3600) duration = Math.floor(duration / 1000)
+    }
   }
 
   let publishTime = 0
@@ -529,16 +566,31 @@ function generateFormattedText(p: ParsedData, format: string): string {
     '作者ID': p.uid,
     '封面': p.cover,
     '视频链接': p.video,
+    '音乐标题': p.music.title || '',
+    '音乐作者': p.music.author || '',
+    '音乐封面': p.music.cover || '',
+    '音乐链接': p.music.url || '',
   }
   const lines = format.split('\n')
   const resultLines: string[] = []
   for (const line of lines) {
+    const varMatches = line.match(formatVarRegex)
+    if (varMatches && varMatches.length > 0) {
+      let allEmptyOrZero = true
+      for (const match of varMatches) {
+        const varName = match.slice(2, -1)
+        const val = vars[varName]
+        if (val && val !== '0') {
+          allEmptyOrZero = false
+          break
+        }
+      }
+      if (allEmptyOrZero) continue
+    }
     let newLine = line
     for (const [key, val] of Object.entries(vars)) {
       newLine = newLine.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), val)
     }
-    const stripped = newLine.replace(/[\s：:，,。.、；;！!？?【】\[\]「」『』（）()《》""''""·—\-_/\\|@#$%^&*+=~`]/g, '').trim()
-    if (stripped.length === 0) continue
     resultLines.push(newLine)
   }
   return resultLines.join('\n').trim()
@@ -613,6 +665,7 @@ export function apply(ctx: Context, config: any) {
     bilibili: 'https://api.bugpk.com/api/bilibili',
     douyin: 'https://api.bugpk.com/api/douyin',
     doubao: 'https://api.bugpk.com/api/dbvideos',
+    doubao_chat: 'https://api.bugpk.com/api/dbduihua',
     kuaishou: 'https://api.bugpk.com/api/kuaishou',
     xiaohongshu: 'https://api.bugpk.com/api/xhs',
     jimeng: 'https://api.bugpk.com/api/jimengai',
@@ -772,7 +825,7 @@ export function apply(ctx: Context, config: any) {
     for (const candidate of candidates) {
       try {
         const info = await fetchApi(candidate, type, fieldMapping)
-        if (info.video || info.images.length > 0) return { success: true, data: info }
+        if (info.video || info.images.length > 0 || info.live_photo.length > 0) return { success: true, data: info }
         debugLog('WARN', `解析成功但无内容: ${candidate}`)
       } catch (error) {
         debugLog('ERROR', `候选链接失败: ${candidate}`, getErrorMessage(error))

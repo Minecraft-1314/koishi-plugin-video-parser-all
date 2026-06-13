@@ -31,15 +31,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 ### 统一消息格式 (Unified Message Format)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `unifiedMessageFormat` | string | `标题：${标题}
-作者：${作者}
-简介：${简介}
-点赞：${点赞数}
-收藏：${收藏数}
-转发：${转发数}
-播放：${播放数}
-评论：${评论数}
-图片数量：${图片数量}` | 自定义解析结果的输出格式，支持变量替换。某行所有变量均为空（或为"0"）时自动隐藏该行 |
+| `unifiedMessageFormat` | string | `标题：${标题}\n作者：${作者}\n简介：${简介}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}` | 自定义解析结果的输出格式，支持变量替换。某行所有变量均为空（或为"0"）时自动隐藏该行 |
 
 ### 内容显示设置 (Content Display Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
@@ -60,7 +52,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | `timeout` | number | 180000 | API 请求超时时间（毫秒） |
 | `videoSendTimeout` | number | 60000 | 视频消息发送超时时间（毫秒，0 为不限制） |
 | `userAgent` | string | `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36` | API 请求使用的 User-Agent |
-| `proxy` | object | `{ enabled: false, protocol: "http", host: "127.0.0.1", port: 7890, auth: { username: "", password: "" } }` | HTTP/HTTPS 代理设置。`enabled` 开关（默认关闭），`protocol` 支持 `http` 或 `https`。需开启 `enabled` 并填写 `host` 后生效 |
+| `proxy` | object | `{ enabled: false, protocol: "http", host: "127.0.0.1", port: 7890, auth: { username: "", password: "" } }` | HTTP/HTTPS 代理设置。`enabled` 开关（默认关闭），`protocol` 下拉选择 `http` 或 `https`。需开启 `enabled` 并填写 `host` 后生效 |
 | `customHeaders` | array | [] | 自定义请求头，会附加到所有 API 请求中。每项包含 `name`（头名称）和 `value`（头值） |
 
 ### API 选择与回退设置 (API Selection & Fallback)
@@ -68,7 +60,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 |--------|------|--------|------|
 | `primaryApiUrl` | string | `https://api.bugpk.com/api/short_videos` | 主 API 地址，解析时优先使用 |
 | `backupApiUrl` | string | `https://api.bugpk.com/api/svparse` | 备用主 API 地址，仅支持抖音、小红书、Instagram、即梦平台解析 |
-| `platformDedicatedFirst` | object | 各平台均为 `false` | 各平台独立开关：是否优先使用平台专属 API。对象键为平台标识（英文），值为布尔值。支持的键：`bilibili`、`douyin`、`kuaishou`、`xiaohongshu`、`weibo`、`xigua`、`youtube`、`tiktok`、`acfun`、`zhihu`、`weishi`、`huya`、`haokan`、`meipai`、`twitter`、`instagram`、`doubao`、`oasis`、`wechat_channel` |
+| `platformDedicatedFirst` | object | 各平台均为 `false` | 各平台独立开关：是否优先使用平台专属 API。对象键为平台标识（英文），值为布尔值。支持的键：`bilibili`、`douyin`、`kuaishou`、`xiaohongshu`、`weibo`、`xigua`、`youtube`、`tiktok`、`acfun`、`zhihu`、`weishi`、`huya`、`haokan`、`meipai`、`twitter`、`instagram`、`doubao`、`doubao_chat`、`oasis`、`wechat_channel` |
 | `customApis` | array | [] | 自定义平台专属 API 列表。每项包含：`platform`（平台类型）、`apiUrl`（API 地址）、`apiKey`（API Key，可选）、`authHeaderType`（认证头类型，可选：`Bearer` / `X-API-Key` / `Custom`）、`customHeaderName`（自定义 Header 名称，仅当 `authHeaderType` 为 `Custom` 时有效）、`fieldMapping`（字段映射 JSON 字符串，用于适配非标准 API 响应，支持点号路径） |
 | `globalFieldMapping` | string | 预设完整字段映射JSON（见下方示例） | 全局字段映射 JSON，优先级低于专属 API 映射。用于统一适配所有平台的 API 响应格式，默认已包含常用路径示例 |
 
@@ -117,6 +109,10 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | `${图片数量}` | 图集/实况图片数量 | 图集/实况 |
 | `${作者ID}` | 作者唯一标识ID | 部分平台 |
 | `${视频链接}` | 视频原始链接 | 视频 |
+| `${音乐标题}` | 音乐标题 | 部分平台 |
+| `${音乐作者}` | 音乐作者 | 部分平台 |
+| `${音乐封面}` | 音乐封面图片地址 | 部分平台 |
+| `${音乐链接}` | 音乐原始链接 | 部分平台 |
 
 > 注：部分变量可能因平台API返回数据不同而显示为空，某行所有变量为空（或为"0"）时该行会自动隐藏。
 
@@ -142,7 +138,8 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | 全民直播 | quanmin (quanmin.tv) | 直播 |
 | Twitter / X | twitter, x.com | 视频、图文 |
 | Instagram | instagram, instagram.com | 图文、Reels |
-| 豆包 | doubao (doubao.com) | 视频 |
+| 豆包 | doubao (doubao.com/video) | 视频 |
+| 豆包图片 | doubao (doubao.com/thread) | 图片 |
 | 皮皮搞笑 | pipigx, h5.pipigx.com | 短视频 |
 | 皮皮虾 | pipixia, h5.pipix.com | 短视频 |
 | 最右 | zuiyou, xiaochuankeji.cn | 短视频 |
