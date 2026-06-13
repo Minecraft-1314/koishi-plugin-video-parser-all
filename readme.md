@@ -31,13 +31,14 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 ### 统一消息格式 (Unified Message Format)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `unifiedMessageFormat` | string | `标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n音乐封面：${音乐封面}\n音乐链接：${音乐链接}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}` | 文字消息格式，支持变量替换。空行自动隐藏。封面及媒体由独立开关控制，默认不包含在文字中 |
+| `unifiedMessageFormat` | string | `标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n音乐链接：${音乐链接}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}` | 文字消息格式，支持变量替换。空行自动隐藏。封面及媒体由独立开关控制，默认不包含在文字中 |
 
 ### 内容显示设置 (Content Display Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `showImageText` | boolean | true | 是否发送文字内容 |
-| `showCoverImage` | boolean | true | 是否发送封面图片 |
+| `showCoverImage` | boolean | true | 是否发送封面图片（视频/图集封面） |
+| `showMusicCover` | boolean | true | 是否发送音乐封面图片 |
 | `showImageFile` | boolean | true | 封面/图片是否以文件形式发送（关闭则只发链接） |
 | `forceDownloadImage` | boolean | false | 强制下载封面/图片后发送 |
 | `imageDownloadTimeout` | number | 60000 | 图片下载超时（毫秒） |
@@ -116,10 +117,9 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | `${视频链接}` | 视频原始链接 |
 | `${音乐标题}` | 音乐标题 |
 | `${音乐作者}` | 音乐作者 |
-| `${音乐封面}` | 音乐封面图片地址 |
 | `${音乐链接}` | 音乐原始链接 |
 
-> 注：封面图片由独立开关控制，不会出现在文字消息中。
+> 注：音乐封面已转为独立图片发送，不再作为文字变量。其余封面图片均通过对应开关控制。
 
 ## 支持的平台 (Supported Platforms)
 | 平台名称 | 关键词识别 | 解析能力 |
@@ -157,11 +157,11 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 
 | 贡献者 (Contributor) | 贡献内容 (Contribution) |
 |----------------------|-------------------------|
-| Minecraft-1314 | 插件完整开发 |
-| ShiraiKuroko003 | 修复消息格式问题 |
-| cyavb | 自定义API KEY认证 |
-| Keep785 | 无法关闭发送封面 |
-| dzt2008 + Apricityx | 误解析修复 |
+| Minecraft-1314 | 插件完整开发 (Complete plugin development) |
+| ShiraiKuroko003 | 修复消息格式设置问题并且PR-1.2.5版本已修复 |
+| cyavb | 提交功能建议-给自定义API添加KEY认证-已修复 |
+| Keep785 | 提交Bug-无法正常关闭发送封面-已修复 |
+| dzt2008 + Apricityx | 提交Bug-会对非支持视频平台URL进行误解析-已修复 |
 | JH-Ahua | BugPk-Api 支持 |
 | shangxue | 灵感来源 |
 

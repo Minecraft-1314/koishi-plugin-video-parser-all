@@ -67,13 +67,14 @@ export const Config = Schema.intersect([
 
   Schema.object({
     unifiedMessageFormat: Schema.string().role('textarea').default(
-      '标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n音乐封面：${音乐封面}\n音乐链接：${音乐链接}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}'
+      '标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n音乐链接：${音乐链接}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}'
     ).description('文字消息格式，支持变量。某行所有变量为空时自动隐藏。封面及媒体文件由独立开关控制，默认不包含在文字中'),
   }).description('消息格式设置'),
 
   Schema.object({
     showImageText: Schema.boolean().default(true).description('是否发送文字内容'),
-    showCoverImage: Schema.boolean().default(true).description('是否发送封面图片'),
+    showCoverImage: Schema.boolean().default(true).description('是否发送封面图片（视频/图集封面）'),
+    showMusicCover: Schema.boolean().default(true).description('是否发送音乐封面图片'),
     showImageFile: Schema.boolean().default(true).description('封面/图片是否以文件形式发送（关闭则只发送链接）'),
     forceDownloadImage: Schema.boolean().default(false).description('强制下载封面/图片后发送'),
     imageDownloadTimeout: Schema.number().min(0).step(1).default(60000).description('图片下载超时（毫秒）'),
@@ -838,6 +839,37 @@ export function apply(ctx: Context, config: any) {
     }
   }
 
+  async function sendMusicCover(session: any, imageUrl: string): Promise<void> {
+    if (!config.showMusicCover) return
+    const sendLink = async () => { await sendWithTimeout(session, `图片链接：${imageUrl}`).catch(() => {}) }
+    if (config.forceDownloadImage) {
+      try {
+        const localPath = await downloadImageFile(imageUrl)
+        await sendWithTimeout(session, h.image(`file://${localPath}`))
+        return
+      } catch (e) {
+        debugLog('ERROR', '强制下载音乐封面失败，尝试URL发送:', getErrorMessage(e))
+        try {
+          await sendWithTimeout(session, h.image(imageUrl))
+          return
+        } catch { await sendLink() }
+      }
+      return
+    }
+    if (!config.showImageFile) {
+      await sendLink()
+      return
+    }
+    try {
+      await sendWithTimeout(session, h.image(imageUrl))
+    } catch {
+      try {
+        const localPath = await downloadImageFile(imageUrl)
+        await sendWithTimeout(session, h.image(`file://${localPath}`))
+      } catch { await sendLink() }
+    }
+  }
+
   async function sendVideoFile(session: any, videoUrl: string): Promise<any> {
     if (!videoUrl) return
     if (!config.showVideoFile) return await sendWithTimeout(session, `视频链接：${videoUrl}`)
@@ -910,8 +942,11 @@ export function apply(ctx: Context, config: any) {
         const p = item.parsed
         const text = item.text
         if (text && config.showImageText) forwardMessages.push(buildForwardNode(session, text, botName))
-        if (p.cover && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
+        if (p.cover && config.showCoverImage && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
           forwardMessages.push(buildForwardNode(session, h.image(p.cover), botName))
+        }
+        if (config.showMusicCover && p.music.cover) {
+          forwardMessages.push(buildForwardNode(session, h.image(p.music.cover), botName))
         }
         if (p.type === 'image' || p.type === 'live_photo' || (p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
           const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? [])
@@ -935,8 +970,12 @@ export function apply(ctx: Context, config: any) {
         const p = item.parsed
         const text = item.text
         if (text && config.showImageText) { await sendWithTimeout(session, text); await delay(300) }
-        if (p.cover && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
+        if (p.cover && config.showCoverImage && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
           await sendImage(session, p.cover).catch(() => {})
+          await delay(300)
+        }
+        if (config.showMusicCover && p.music.cover) {
+          await sendMusicCover(session, p.music.cover).catch(() => {})
           await delay(300)
         }
         if (p.video && (p.type === 'video' || (p.type === 'live' && !p.live_photo?.length && !p.images?.length))) {
