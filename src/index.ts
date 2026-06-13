@@ -67,7 +67,7 @@ export const Config = Schema.intersect([
 
   Schema.object({
     unifiedMessageFormat: Schema.string().role('textarea').default(
-      '标题：${标题}\n作者：${作者}\n简介：${简介}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}'
+      '标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n音乐封面：${音乐封面}\n音乐链接：${音乐链接}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}'
     ).description('统一消息格式，可用变量：${标题} ${作者} ${简介} ${点赞数} ${收藏数} ${转发数} ${播放数} ${评论数} ${视频时长} ${发布时间} ${图片数量} ${作者ID} ${音乐标题} ${音乐作者} ${音乐封面} ${音乐链接}'),
   }).description('消息格式设置'),
 
@@ -144,7 +144,7 @@ export const Config = Schema.intersect([
       twitter: Schema.boolean().default(false).description('Twitter/X - 优先使用专属 API'),
       instagram: Schema.boolean().default(false).description('Instagram - 优先使用专属 API'),
       doubao: Schema.boolean().default(false).description('豆包 - 优先使用专属 API'),
-      doubao_chat: Schema.boolean().default(false).description('豆包图片 - 优先使用专属 API'),
+      doubao_chat: Schema.boolean().default(false).description('豆包对话 - 优先使用专属 API'),
       oasis: Schema.boolean().default(false).description('绿洲 - 优先使用专属 API'),
       wechat_channel: Schema.boolean().default(false).description('视频号 - 优先使用专属 API'),
     }).description('各平台独立开关：是否优先使用专属 API'),
@@ -168,7 +168,7 @@ export const Config = Schema.intersect([
           Schema.const('twitter').description('Twitter/X'),
           Schema.const('instagram').description('Instagram'),
           Schema.const('doubao').description('豆包'),
-          Schema.const('doubao_chat').description('豆包图片'),
+          Schema.const('doubao_chat').description('豆包对话'),
           Schema.const('oasis').description('绿洲'),
           Schema.const('wechat_channel').description('视频号'),
         ]).description('选择平台'),

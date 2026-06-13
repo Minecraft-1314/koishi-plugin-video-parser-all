@@ -31,7 +31,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 ### 统一消息格式 (Unified Message Format)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `unifiedMessageFormat` | string | `标题：${标题}\n作者：${作者}\n简介：${简介}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}` | 自定义解析结果的输出格式，支持变量替换。某行所有变量均为空（或为"0"）时自动隐藏该行 |
+| `unifiedMessageFormat` | string | `标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n音乐封面：${音乐封面}\n音乐链接：${音乐链接}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}` | 自定义解析结果的输出格式，支持变量替换。某行所有变量均为空（或为"0"）时自动隐藏该行 |
 
 ### 内容显示设置 (Content Display Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
@@ -139,7 +139,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | Twitter / X | twitter, x.com | 视频、图文 |
 | Instagram | instagram, instagram.com | 图文、Reels |
 | 豆包 | doubao (doubao.com/video) | 视频 |
-| 豆包图片 | doubao (doubao.com/thread) | 图片 |
+| 豆包对话 | doubao (doubao.com/thread) | 对话分享 |
 | 皮皮搞笑 | pipigx, h5.pipigx.com | 短视频 |
 | 皮皮虾 | pipixia, h5.pipix.com | 短视频 |
 | 最右 | zuiyou, xiaochuankeji.cn | 短视频 |
