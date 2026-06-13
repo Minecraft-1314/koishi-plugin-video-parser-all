@@ -27,11 +27,12 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | `botName` | string | 视频解析机器人 | 合并转发消息中显示的机器人名称 |
 | `showWaitingTip` | boolean | true | 解析时是否显示等待提示 |
 | `debug` | boolean | false | 是否开启 Debug 模式，在控制台输出详细日志 |
+| `platformEnabled` | object | 各平台均为 `true` | 各平台解析开关，可单独关闭某平台 |
 
 ### 统一消息格式 (Unified Message Format)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `unifiedMessageFormat` | string | `标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n音乐链接：${音乐链接}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}` | 文字消息格式，支持变量替换。空行自动隐藏。封面及媒体由独立开关控制，默认不包含在文字中 |
+| `unifiedMessageFormat` | string | `标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}` | 文字消息格式，支持变量替换。空行自动隐藏。 |
 
 ### 内容显示设置 (Content Display Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
@@ -50,7 +51,14 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | `tempDir` | string | `./temp_videos` | 临时视频存储目录 |
 | `maxVideoSize` | number | 0 | 最大下载视频大小（MB），0 不限制 |
 | `maxDescLength` | number | 200 | 简介最大长度（字符） |
-| `maxConcurrent` | number | 3 | 批量解析最大并发数 |
+| `maxConcurrent` | number | 3 | 解析最大并发数 |
+| `downloadConcurrency` | number | 3 | 下载线程数（≥1 整数） |
+| `showMusicVoice` | boolean | false | 是否发送音乐（转语音）。**需要依赖 `koishi-plugin-silk` 和 `koishi-plugin-ffmpeg`** |
+| `showMusicVoiceFile` | boolean | true | 音乐语音是否以文件形式发送（关闭则只发链接） |
+| `forceDownloadMusicVoice` | boolean | false | 强制下载音乐语音后发送 |
+| `musicDownloadTimeout` | number | 120000 | 音乐下载超时（毫秒） |
+| `musicTempDir` | string | `./temp_music` | 临时音乐存储目录 |
+| `maxMusicSize` | number | 0 | 最大下载音乐大小（MB），0 不限制 |
 
 ### 网络与 API 设置 (Network & API Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
@@ -64,10 +72,9 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 ### API 选择与回退设置 (API Selection & Fallback)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `primaryApiUrl` | string | `https://api.bugpk.com/api/short_videos` | 主 API 地址 |
-| `backupApiUrl` | string | `https://api.bugpk.com/api/svparse` | 备用主 API，仅支持部分平台 |
 | `platformDedicatedFirst` | object | 各平台均为 `false` | 平台专属 API 优先开关，键：`bilibili` 等 |
-| `customApis` | array | [] | 自定义平台专属 API，含 `platform`, `apiUrl`, `apiKey`, `authHeaderType`, `customHeaderName`, `fieldMapping` |
+| `customApis` | array | [] | 自定义内置平台专属 API，含 `platform`, `apiUrl`, `apiKey`, `authHeaderType`, `customHeaderName`, `fieldMapping` |
+| `customPlatforms` | array | [] | 完全自定义新平台。每项含：`name`（平台名称）、`exampleUrl`（示例链接）、`keywords`（匹配关键词，逗号分隔）、`apiUrl`（解析API）、`apiKey`、`authHeaderType`、`customHeaderName`、`fieldMapping`、`proxy`（独立代理） |
 | `globalFieldMapping` | string | 预设字段映射 JSON | 全局字段映射，支持点号路径 |
 
 ### 错误与重试设置 (Error & Retry Settings)
@@ -80,7 +87,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 ### 发送方式设置 (Send Mode Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `enableForward` | boolean | false | 启用合并转发（仅 OneBot 平台） |
+| `enableForward` | boolean | false | 启用合并转发（支持 OneBot、Satori 平台） |
 
 ### 缓存与去重设置 (Cache & Deduplication Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
@@ -117,9 +124,14 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | `${视频链接}` | 视频原始链接 |
 | `${音乐标题}` | 音乐标题 |
 | `${音乐作者}` | 音乐作者 |
-| `${音乐链接}` | 音乐原始链接 |
 
-> 注：音乐封面已转为独立图片发送，不再作为文字变量。其余封面图片均通过对应开关控制。
+## 音乐语音依赖说明 (Music Voice Dependencies)
+若启用 `showMusicVoice`，请确保已安装以下 Koishi 插件：
+- `koishi-plugin-silk`：提供 silk 编解码支持
+- `koishi-plugin-ffmpeg`：提供音频重采样支持
+
+这些依赖已声明为可选依赖
+若未安装，音乐语音将尝试直接发送原始音频，部分平台可能无法播放。
 
 ## 支持的平台 (Supported Platforms)
 | 平台名称 | 关键词识别 | 解析能力 |
@@ -131,12 +143,12 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | 微博 | weibo, video.weibo.com | 视频、图集 |
 | 剪映 / 即梦 | jianying, jimeng.jianying.com | 视频模板 |
 | 今日头条 / 西瓜视频 | toutiao, ixigua.com | 短视频 |
-| AcFun (A站) | acfun, acfun.cn | 视频 |
+| AcFun（A站） | acfun, acfun.cn | 视频 |
 | 知乎 | zhihu, zhihu.com | 视频、回答 |
 | 微视 | weishi, weishi.qq.com | 短视频 |
 | 虎牙 | huya, huya.com | 直播、视频 |
-| YouTube (油管) | youtube, youtu.be | 视频 |
-| TikTok (国际版抖音) | tiktok, tiktok.com | 短视频 |
+| YouTube（油管） | youtube, youtu.be | 视频 |
+| TikTok（国际版抖音） | tiktok, tiktok.com | 短视频 |
 | 好看视频 | haokan, haokan.baidu.com | 短视频 |
 | 梨视频 | video.li | 短视频 |
 | 美拍 | meipai, meipai.com | 短视频 |
@@ -150,8 +162,9 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | 最右 | zuiyou, xiaochuankeji.cn | 短视频 |
 | 绿洲 (Oasis) | oasis.weibo.com | 视频、图文 |
 | 视频号 (WeChat Channels) | channels.weixin.qq.com, weixin.qq.com/sph/ | 短视频 |
+| 🔧 自定义平台 | 通过 `customPlatforms` 添加 | 取决于 API |
 
-> 注：部分平台解析能力可能因API限制有所差异。
+> 注：部分平台解析能力可能因API限制有所差异。可通过 `platformEnabled` 单独关闭。
 
 ## 项目贡献者 (Contributors)
 
