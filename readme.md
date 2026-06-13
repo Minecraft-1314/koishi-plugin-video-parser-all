@@ -6,7 +6,7 @@
 这是一个为 Koishi 机器人框架开发的**全平台视频/图集解析插件**，使用统一API接口，支持自动识别并解析抖音、快手、B站、小红书、微博、YouTube、TikTok、剪映、AcFun、知乎、虎牙、绿洲、视频号等20+主流平台的短视频/图集/实况链接。
 
 ### English
-This is a **multi-platform video/image parsing plugin** developed for the Koishi bot framework, using a unified API interface to automatically recognize and parse short video/image/live photo links from 20+ mainstream platforms such as Douyin, Kuaishou, Bilibili, Xiaohongshu, Weibo, YouTube, TikTok, Jianying, AcFun, Zhihu, Huya, Oasis, WeChat Channels and more. 
+This is a **multi-platform video/image parsing plugin** developed for the Koishi bot framework, using a unified API interface to automatically recognize and parse short video/image/live photo links from 20+ mainstream platforms such as Douyin, Kuaishou, Bilibili, Xiaohongshu, Weibo, YouTube, TikTok, Jianying, AcFun, Zhihu, Huya, Oasis, WeChat Channels and more.
 
 ## 项目仓库 (Repository)
 - GitHub: `https://github.com/Minecraft-1314/koishi-plugin-video-parser-all`
@@ -20,7 +20,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 
 ## 配置项说明 (Configuration)
 
-### 基础设置
+### 基础设置 (Basic Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `enable` | boolean | true | 是否启用视频解析插件 |
@@ -28,55 +28,69 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | `showWaitingTip` | boolean | true | 解析时是否显示等待提示 |
 | `debug` | boolean | false | 是否开启 Debug 模式，在控制台输出详细日志 |
 
-### 统一消息格式
+### 统一消息格式 (Unified Message Format)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `unifiedMessageFormat` | string | `标题：${标题}\n作者：${作者}\n简介：${简介}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}` | 自定义解析结果的输出格式，支持变量替换。某行所有变量为空（或为"0"）时自动隐藏该行 |
+| `unifiedMessageFormat` | string | `标题：${标题}
+作者：${作者}
+简介：${简介}
+点赞：${点赞数}
+收藏：${收藏数}
+转发：${转发数}
+播放：${播放数}
+评论：${评论数}
+图片数量：${图片数量}` | 自定义解析结果的输出格式，支持变量替换。某行所有变量均为空（或为"0"）时自动隐藏该行 |
 
-### 内容显示设置
+### 内容显示设置 (Content Display Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `showImageText` | boolean | true | 是否发送解析后的文字内容 |
+| `showCoverImage` | boolean | true | 是否发送封面图片（关闭后不再自动发送封面） |
 | `showVideoFile` | boolean | true | 是否发送视频文件（关闭则只发送视频链接） |
 | `maxDescLength` | number | 200 | 简介内容最大长度（字符），超出自动截断 |
 | `videoDownloadTimeout` | number | 120000 | 视频下载超时（毫秒） |
 | `tempDir` | string | `./temp_videos` | 临时视频存储目录 |
 | `maxVideoSize` | number | 0 | 最大下载视频大小（MB），0 为不限制大小 |
 | `forceDownloadVideo` | boolean | false | 强制下载视频后发送 |
+| `maxConcurrent` | number | 3 | 批量解析时最大并发数，避免同时下载过多 |
 
-### 网络与 API 设置
+### 网络与 API 设置 (Network & API Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `timeout` | number | 180000 | API 请求超时时间（毫秒） |
 | `videoSendTimeout` | number | 60000 | 视频消息发送超时时间（毫秒，0 为不限制） |
 | `userAgent` | string | `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36` | API 请求使用的 User-Agent |
+| `proxy` | object | `{ enabled: false, protocol: "http", host: "127.0.0.1", port: 7890, auth: { username: "", password: "" } }` | HTTP/HTTPS 代理设置。`enabled` 开关（默认关闭），`protocol` 支持 `http` 或 `https`。需开启 `enabled` 并填写 `host` 后生效 |
+| `customHeaders` | array | [] | 自定义请求头，会附加到所有 API 请求中。每项包含 `name`（头名称）和 `value`（头值） |
 
-### API 选择与回退设置
+### API 选择与回退设置 (API Selection & Fallback)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `primaryApiUrl` | string | `https://api.bugpk.com/api/short_videos` | 主 API 地址，解析时优先使用 |
 | `backupApiUrl` | string | `https://api.bugpk.com/api/svparse` | 备用主 API 地址，仅支持抖音、小红书、Instagram、即梦平台解析 |
 | `platformDedicatedFirst` | object | 各平台均为 `false` | 各平台独立开关：是否优先使用平台专属 API。对象键为平台标识（英文），值为布尔值。支持的键：`bilibili`、`douyin`、`kuaishou`、`xiaohongshu`、`weibo`、`xigua`、`youtube`、`tiktok`、`acfun`、`zhihu`、`weishi`、`huya`、`haokan`、`meipai`、`twitter`、`instagram`、`doubao`、`oasis`、`wechat_channel` |
-| `customApis` | array | [] | 自定义平台专属 API 列表。每项包含：`platform`（平台类型）、`apiUrl`（API 地址）、`apiKey`（API Key，可选）、`authHeaderType`（认证头类型，可选：`Bearer` / `X-API-Key` / `Custom`）、`customHeaderName`（自定义 Header 名称，仅当 `authHeaderType` 为 `Custom` 时有效）。可覆盖内置默认专属 API |
+| `customApis` | array | [] | 自定义平台专属 API 列表。每项包含：`platform`（平台类型）、`apiUrl`（API 地址）、`apiKey`（API Key，可选）、`authHeaderType`（认证头类型，可选：`Bearer` / `X-API-Key` / `Custom`）、`customHeaderName`（自定义 Header 名称，仅当 `authHeaderType` 为 `Custom` 时有效）、`fieldMapping`（字段映射 JSON 字符串，用于适配非标准 API 响应，支持点号路径） |
+| `globalFieldMapping` | string | 预设完整字段映射JSON（见下方示例） | 全局字段映射 JSON，优先级低于专属 API 映射。用于统一适配所有平台的 API 响应格式，默认已包含常用路径示例 |
 
-### 错误与重试设置
+### 错误与重试设置 (Error & Retry Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `ignoreSendError` | boolean | true | 是否忽略消息发送失败，避免插件崩溃 |
 | `retryTimes` | number | 3 | API 请求及消息发送失败时的重试次数 |
 | `retryInterval` | number | 1000 | API 请求及消息发送重试的间隔时间（毫秒） |
 
-### 发送方式设置
+### 发送方式设置 (Send Mode Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `enableForward` | boolean | false | 是否启用合并转发（仅 OneBot 平台），启用后视频与图文将整合进同一条合并消息 |
 
-### 去重设置
+### 缓存与去重设置 (Cache & Deduplication Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `deduplicationInterval` | number | 180 | 禁止重复解析时间间隔（秒），0 为不限制。同一个链接在间隔内不会重复解析。 |
+| `cacheTTL` | number | 600 | 解析结果缓存时间（秒），0 为不缓存。缓存可减少重复 API 请求。 |
 
-### 界面文字设置
+### 界面文字设置 (UI Text Settings)
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `waitingTipText` | string | 正在解析视频，请稍候... | 解析等待提示文字 |
@@ -102,7 +116,6 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | `${发布时间}` | 发布时间（格式化） | 所有平台 |
 | `${图片数量}` | 图集/实况图片数量 | 图集/实况 |
 | `${作者ID}` | 作者唯一标识ID | 部分平台 |
-| `${封面}` | 封面图片地址 | 所有平台 |
 | `${视频链接}` | 视频原始链接 | 视频 |
 
 > 注：部分变量可能因平台API返回数据不同而显示为空，某行所有变量为空（或为"0"）时该行会自动隐藏。
@@ -144,6 +157,9 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 |----------------------|-------------------------|
 | Minecraft-1314 | 插件完整开发 (Complete plugin development) |
 | ShiraiKuroko003 | 修复消息格式设置问题并且PR-1.2.5版本已修复 |
+| cyavb | 提交功能建议-给自定义API添加KEY认证-已修复 |
+| Keep785 | 提交Bug-无法正常关闭发送封面-已修复 |
+| dzt2008 + Apricityx | 提交Bug-会对非支持视频平台URL进行误解析-已修复 |
 | JH-Ahua | BugPk-Api 支持 |
 | shangxue | 灵感来源 |
 

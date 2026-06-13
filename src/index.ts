@@ -32,6 +32,29 @@ class SimpleLRUCache<V> {
   }
 }
 
+class ConcurrencyLimiter {
+  private running = 0
+  private queue: (() => void)[] = []
+  constructor(private max: number) {}
+  async acquire(): Promise<void> {
+    if (this.running < this.max) {
+      this.running++
+      return
+    }
+    return new Promise(resolve => {
+      this.queue.push(() => {
+        this.running++
+        resolve()
+      })
+    })
+  }
+  release(): void {
+    this.running--
+    const next = this.queue.shift()
+    if (next) next()
+  }
+}
+
 export const name = 'video-parser-all'
 
 export const Config = Schema.intersect([
@@ -45,23 +68,41 @@ export const Config = Schema.intersect([
   Schema.object({
     unifiedMessageFormat: Schema.string().role('textarea').default(
       '标题：${标题}\n作者：${作者}\n简介：${简介}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}'
-    ).description('统一消息格式，可用变量：${标题} ${作者} ${简介} ${点赞数} ${收藏数} ${转发数} ${播放数} ${评论数} ${视频时长} ${发布时间} ${图片数量} ${作者ID} ${封面}'),
+    ).description('统一消息格式，可用变量：${标题} ${作者} ${简介} ${点赞数} ${收藏数} ${转发数} ${播放数} ${评论数} ${视频时长} ${发布时间} ${图片数量} ${作者ID}'),
   }).description('消息格式设置'),
 
   Schema.object({
     showImageText: Schema.boolean().default(true).description('是否发送解析后的文字内容'),
+    showCoverImage: Schema.boolean().default(true).description('是否发送封面图片'),
     showVideoFile: Schema.boolean().default(true).description('是否发送视频文件（关闭则只发送视频链接）'),
     maxDescLength: Schema.number().min(0).step(1).default(200).description('简介内容最大长度（字符），超出自动截断'),
     videoDownloadTimeout: Schema.number().min(0).step(1).default(120000).description('视频下载超时（毫秒）'),
     tempDir: Schema.string().default('./temp_videos').description('临时视频存储目录'),
     maxVideoSize: Schema.number().min(0).step(1).default(0).description('最大下载视频大小（MB），0 为不限制大小'),
     forceDownloadVideo: Schema.boolean().default(false).description('强制下载视频后发送'),
+    maxConcurrent: Schema.number().min(1).step(1).default(3).description('批量解析时最大并发数'),
   }).description('内容显示设置'),
 
   Schema.object({
     timeout: Schema.number().min(0).step(1).default(180000).description('API 请求超时（毫秒）'),
     videoSendTimeout: Schema.number().min(0).step(1).default(60000).description('视频消息发送超时（毫秒，0 为不限制）'),
     userAgent: Schema.string().default('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36').description('API 请求 UA'),
+    proxy: Schema.object({
+      enabled: Schema.boolean().default(false).description('是否启用 HTTP/HTTPS 代理'),
+      protocol: Schema.string().default('http').description('代理协议 (http 或 https)'),
+      host: Schema.string().default('127.0.0.1').description('代理地址'),
+      port: Schema.number().default(7890).description('代理端口'),
+      auth: Schema.object({
+        username: Schema.string().default('').description('代理用户名'),
+        password: Schema.string().default('').description('代理密码'),
+      }).description('代理认证'),
+    }).description('HTTP/HTTPS 代理设置（需开启 enabled）'),
+    customHeaders: Schema.array(
+      Schema.object({
+        name: Schema.string().required().description('请求头名称'),
+        value: Schema.string().required().description('请求头值'),
+      })
+    ).default([]).description('自定义请求头，会附加到所有 API 请求中'),
   }).description('网络与 API 设置'),
 
   Schema.object({
@@ -76,7 +117,8 @@ export const Config = Schema.intersect([
 
   Schema.object({
     deduplicationInterval: Schema.number().min(0).step(1).default(180).description('禁止重复解析时间间隔（秒），0 为不限制'),
-  }).description('去重设置'),
+    cacheTTL: Schema.number().min(0).step(1).default(600).description('解析结果缓存时间（秒），0 为不缓存'),
+  }).description('缓存与去重设置'),
 
   Schema.object({
     primaryApiUrl: Schema.string().default('https://api.bugpk.com/api/short_videos').description('主 API 地址'),
@@ -133,8 +175,34 @@ export const Config = Schema.intersect([
           Schema.const('Custom').description('自定义 Header 名称'),
         ]).default('Bearer').description('认证头类型'),
         customHeaderName: Schema.string().description('自定义 Header 名称（仅当选择 Custom 时有效）').default('X-API-Key'),
+        fieldMapping: Schema.string().role('textarea').default('{}').description('字段映射 JSON，例如 {"title":"data.info.name"}，支持点号路径'),
       })
     ).default([]).description('自定义平台专属 API 地址，留空则使用内置默认专属 API'),
+    globalFieldMapping: Schema.string().role('textarea').default(
+      '{\n' +
+      '  "title": "data.title",\n' +
+      '  "desc": "data.description",\n' +
+      '  "author": "data.author.name",\n' +
+      '  "uid": "data.author.id",\n' +
+      '  "avatar": "data.author.avatar",\n' +
+      '  "cover": "data.cover_url",\n' +
+      '  "video": "data.video_url",\n' +
+      '  "video_backup": "data.video_qualities",\n' +
+      '  "videos": "data.videos",\n' +
+      '  "type": "data.type",\n' +
+      '  "like": "data.statistics.likes",\n' +
+      '  "comment": "data.statistics.comments",\n' +
+      '  "collect": "data.statistics.favorites",\n' +
+      '  "share": "data.statistics.shares",\n' +
+      '  "play": "data.statistics.plays",\n' +
+      '  "duration": "data.duration",\n' +
+      '  "publishTime": "data.create_time",\n' +
+      '  "music_title": "data.music.title",\n' +
+      '  "music_author": "data.music.author",\n' +
+      '  "music_cover": "data.music.cover",\n' +
+      '  "music_url": "data.music.url"\n' +
+      '}'
+    ).description('全局字段映射 JSON，优先级低于专属 API 映射'),
   }).description('API 选择设置'),
 
   Schema.object({
@@ -186,6 +254,7 @@ interface ApiItem {
   apiKey?: string
   authHeaderType?: string
   customHeaderName?: string
+  fieldMapping?: Record<string, string>
 }
 
 const logger = new Logger(name)
@@ -194,8 +263,6 @@ function debugLog(level: string, ...args: any[]) {
   if (!debugEnabled) return
   logger.info(`[${new Date().toISOString()}] [${level}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')}`)
 }
-
-const urlCache = new SimpleLRUCache<{ data: ParsedData; expire: number }>(500, 10 * 60 * 1000)
 
 const LINK_RULES: { pattern: RegExp; type: string }[] = [
   { pattern: /https?:\/\/(?:www\.)?bilibili\.com\/video\/([ab]v[0-9a-zA-Z_-]+)/gi, type: 'bilibili' },
@@ -330,78 +397,117 @@ function pickBestQuality(videoBackup: any[]): VideoQuality[] {
   })).sort((a, b) => b.bit_rate - a.bit_rate)
 }
 
-function parseApiResponse(raw: any, maxDescLen: number): ParsedData {
+function getNestedValue(obj: any, path: string): any {
+  if (!path) return obj
+  const keys = path.split('.')
+  let current = obj
+  for (const key of keys) {
+    if (current === null || current === undefined) return undefined
+    current = current[key]
+  }
+  return current
+}
+
+function parseApiResponse(raw: any, maxDescLen: number, fieldMapping?: Record<string, string>): ParsedData {
   debugLog('DEBUG', 'API raw response', raw)
   const data = raw?.data || {}
   const extra = data.extra || {}
-  let type = data.type || ''
-  if (!type) {
-    if (data.images?.length > 0 && !data.url) type = 'image'
-    else if (data.live_photo?.length > 0) type = 'live_photo'
-    else if (raw.msg === 'live' || data.live) type = 'live'
-    else type = 'video'
+
+  const mapField = (name: string, fallback: () => any) => {
+    if (fieldMapping && fieldMapping[name]) {
+      const value = getNestedValue(raw, fieldMapping[name])
+      if (value !== undefined) return value
+    }
+    return fallback()
   }
-  const authorObj = data.author
+
+  let type = mapField('type', () => {
+    let t = data.type || ''
+    if (!t) {
+      if (data.images?.length > 0 && !data.url) t = 'image'
+      else if (data.live_photo?.length > 0) t = 'live_photo'
+      else if (raw.msg === 'live' || data.live) t = 'live'
+      else t = 'video'
+    }
+    return t
+  })
+
+  const authorObj = mapField('author', () => data.author)
   let author = '', uid = '', avatar = ''
   if (authorObj && typeof authorObj === 'object') {
     author = authorObj.name || authorObj.author || ''
     uid = String(authorObj.id || data.uid || '')
     avatar = authorObj.avatar || data.avatar || ''
   } else {
-    author = data.author || data.auther || ''
-    uid = String(data.uid || '')
-    avatar = data.avatar || ''
+    author = mapField('author', () => data.author || data.auther || '')
+    uid = String(mapField('uid', () => data.uid || ''))
+    avatar = mapField('avatar', () => data.avatar || '')
   }
-  const title = data.title || ''
-  const desc = (data.desc || data.description || '').slice(0, maxDescLen).trim()
-  const cover = data.cover || ''
+
+  const title = mapField('title', () => data.title || '')
+  const desc = (mapField('desc', () => data.desc || data.description || '') as string).slice(0, maxDescLen).trim()
+  const coverRaw = mapField('cover', () => data.cover || '')
+  const cover = coverRaw ? (String(coverRaw).startsWith('http') ? String(coverRaw) : 'https:' + coverRaw) : ''
+
   let video = ''
   let videos: VideoQuality[] = []
-  if (Array.isArray(data.video_backup) && data.video_backup.length) {
-    const bestQ = pickBestQuality(data.video_backup)
+  const videoBackup = mapField('video_backup', () => data.video_backup)
+  if (Array.isArray(videoBackup) && videoBackup.length) {
+    const bestQ = pickBestQuality(videoBackup)
     videos = bestQ
     video = bestQ[0]?.url || ''
   }
-  if (!video && Array.isArray(data.videos) && data.videos.length) {
-    const validVideos = data.videos.filter((v: any) => v && v.url)
-    if (validVideos.length) {
-      video = validVideos[0].url
-      videos = validVideos.map((v: any) => ({ quality: v.accept?.[0] || 'unknown', url: v.url }))
+  if (!video) {
+    const rawVideos = mapField('videos', () => data.videos)
+    if (Array.isArray(rawVideos) && rawVideos.length) {
+      const validVideos = rawVideos.filter((v: any) => v && v.url)
+      if (validVideos.length) {
+        video = validVideos[0].url
+        videos = validVideos.map((v: any) => ({ quality: v.accept?.[0] || 'unknown', url: v.url }))
+      }
     }
   }
-  if (!video && data.url) video = data.url
+  if (!video) video = mapField('video', () => data.url || '')
   if (video && !video.startsWith('http')) video = 'https:' + video
+
   const images: string[] = Array.isArray(data.images) ? data.images.filter((img: any) => img && typeof img === 'string').map((img: any) => img.startsWith('http') ? img : 'https:' + img) : []
   const live_photo = Array.isArray(data.live_photo) ? data.live_photo.filter((lp: any) => lp && lp.image).map((lp: any) => ({
     image: lp.image.startsWith('http') ? lp.image : 'https:' + lp.image,
     video: lp.video ? (lp.video.startsWith('http') ? lp.video : 'https:' + lp.video) : ''
   })) : []
+
   const music = {
-    title: data.music?.title || data.music?.name || '',
-    author: data.music?.author || data.music?.artist || '',
-    cover: data.music?.cover || '',
-    url: data.music?.url || ''
+    title: mapField('music_title', () => data.music?.title || data.music?.name || '') as string,
+    author: mapField('music_author', () => data.music?.author || data.music?.artist || '') as string,
+    cover: mapField('music_cover', () => data.music?.cover || '') as string,
+    url: mapField('music_url', () => data.music?.url || '') as string,
   }
-  const stats = extra.statistics || {}
-  const like = Number(data.like ?? stats.digg_count ?? 0)
-  const comment = Number(stats.comment_count ?? 0)
-  const collect = Number(stats.collect_count ?? 0)
-  const share = Number(stats.share_count ?? 0)
-  const play = Number(stats.play_count ?? 0)
+
+  const stats = { ...(data.statistics || {}), ...(extra.statistics || {}) }
+  const like = Number(mapField('like', () => data.like ?? stats.digg_count ?? stats.like_count ?? stats.likes ?? 0))
+  const comment = Number(mapField('comment', () => data.comment ?? stats.comment_count ?? stats.comments ?? stats.comment ?? 0))
+  const collect = Number(mapField('collect', () => data.collect ?? stats.collect_count ?? stats.favorite_count ?? stats.favorites ?? 0))
+  const share = Number(mapField('share', () => data.share ?? stats.share_count ?? stats.forward_count ?? stats.shares ?? 0))
+  const play = Number(mapField('play', () => data.play ?? stats.play_count ?? stats.view_count ?? stats.plays ?? 0))
+
   let duration = 0
-  if (data.duration) {
-    duration = typeof data.duration === 'string' ? parseInt(data.duration, 10) : data.duration
+  const durRaw = mapField('duration', () => data.duration)
+  if (durRaw) {
+    duration = typeof durRaw === 'string' ? parseInt(durRaw, 10) : Number(durRaw)
     if (duration > 1000000) duration = Math.floor(duration / 1000)
   } else if (extra.duration_ms) {
-    duration = Math.floor(extra.duration_ms / 1000)
+    duration = Math.floor(Number(extra.duration_ms) / 1000)
   }
+
   let publishTime = 0
-  if (data.time) {
-    publishTime = typeof data.time === 'number' ? data.time : parseInt(data.time, 10)
+  const timeRaw = mapField('publishTime', () => data.time)
+  if (timeRaw) {
+    publishTime = typeof timeRaw === 'number' ? timeRaw : parseInt(timeRaw, 10)
     if (publishTime < 1000000000000) publishTime *= 1000
   } else if (extra.create_time) {
-    publishTime = extra.create_time * 1000
+    publishTime = Number(extra.create_time) * 1000
   }
+
   return { type, title, desc, author, uid, avatar, cover, video, videos, images, live_photo, music, like, comment, collect, share, play, duration, publishTime }
 }
 
@@ -427,23 +533,12 @@ function generateFormattedText(p: ParsedData, format: string): string {
   const lines = format.split('\n')
   const resultLines: string[] = []
   for (const line of lines) {
-    const varMatches = line.match(formatVarRegex)
-    if (varMatches) {
-      let allEmpty = true
-      for (const match of varMatches) {
-        const varName = match.slice(2, -1)
-        const val = vars[varName]
-        if (val && val !== '0') {
-          allEmpty = false
-          break
-        }
-      }
-      if (allEmpty) continue
-    }
     let newLine = line
     for (const [key, val] of Object.entries(vars)) {
       newLine = newLine.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), val)
     }
+    const stripped = newLine.replace(/[\s：:，,。.、；;！!？?【】\[\]「」『』（）()《》""''""·—\-_/\\|@#$%^&*+=~`]/g, '').trim()
+    if (stripped.length === 0) continue
     resultLines.push(newLine)
   }
   return resultLines.join('\n').trim()
@@ -465,11 +560,25 @@ function getErrorMessage(error: unknown): string {
   return String(error)
 }
 
+function parseFieldMapping(mappingStr: string): Record<string, string> | undefined {
+  if (!mappingStr || mappingStr.trim() === '{}' || mappingStr.trim() === '') return undefined
+  try {
+    const obj = JSON.parse(mappingStr)
+    if (typeof obj === 'object' && !Array.isArray(obj)) return obj
+    return undefined
+  } catch {
+    return undefined
+  }
+}
+
 export function apply(ctx: Context, config: any) {
   debugEnabled = config.debug || false
   debugLog('INFO', 'plugin start')
 
   const dedupCache = new SimpleLRUCache<number>(1000, config.deduplicationInterval * 1000)
+  const cacheTTL = (config.cacheTTL || 600) * 1000
+  const urlCacheLocal = new SimpleLRUCache<{ data: ParsedData; expire: number }>(500, cacheTTL)
+
   const texts = {
     waitingTipText: config.waitingTipText || '正在解析视频，请稍候...',
     unsupportedPlatformText: config.unsupportedPlatformText || '不支持该平台链接',
@@ -478,14 +587,27 @@ export function apply(ctx: Context, config: any) {
     parseErrorItemFormat: config.parseErrorItemFormat || '【${url}】: ${msg}',
   }
 
-  const http: AxiosInstance = axios.create({
+  const proxyConfig = config.proxy || {}
+  const axiosConfig: AxiosRequestConfig = {
     timeout: config.timeout,
     headers: {
       'User-Agent': config.userAgent,
       'Referer': 'https://www.baidu.com/',
       'Content-Type': 'application/x-www-form-urlencoded'
     }
-  })
+  }
+  if (proxyConfig.enabled && proxyConfig.host) {
+    axiosConfig.proxy = {
+      protocol: proxyConfig.protocol || 'http',
+      host: proxyConfig.host,
+      port: proxyConfig.port || 7890,
+      auth: proxyConfig.auth?.username ? {
+        username: proxyConfig.auth.username,
+        password: proxyConfig.auth.password || ''
+      } : undefined
+    }
+  }
+  const http: AxiosInstance = axios.create(axiosConfig)
 
   const defaultDedicatedApis: Record<string, string> = {
     bilibili: 'https://api.bugpk.com/api/bilibili',
@@ -505,20 +627,25 @@ export function apply(ctx: Context, config: any) {
 
   const backupSupportedPlatforms = new Set(['douyin', 'xiaohongshu', 'instagram', 'jimeng'])
 
-  function getPlatformConfig(type: string): { apiUrl: string | null; dedicatedFirst: boolean; apiKey: string; authHeaderType: string; customHeaderName: string } {
+  function getPlatformConfig(type: string): { apiUrl: string | null; dedicatedFirst: boolean; apiKey: string; authHeaderType: string; customHeaderName: string; fieldMapping?: Record<string, string> } {
     const custom = config.customApis?.find((item: any) => item.platform === type)
     let apiUrl = defaultDedicatedApis[type] || null
     let apiKey = ''
     let authHeaderType = 'Bearer'
     let customHeaderName = 'X-API-Key'
+    let fieldMapping: Record<string, string> | undefined = undefined
     if (custom && custom.apiUrl) {
       apiUrl = custom.apiUrl
       apiKey = custom.apiKey || ''
       authHeaderType = custom.authHeaderType || 'Bearer'
       customHeaderName = custom.customHeaderName || 'X-API-Key'
+      fieldMapping = parseFieldMapping(custom.fieldMapping)
     }
     const dedicatedFirst = config.platformDedicatedFirst?.[type] ?? false
-    return { apiUrl, dedicatedFirst, apiKey, authHeaderType, customHeaderName }
+    if (!fieldMapping) {
+      fieldMapping = parseFieldMapping(config.globalFieldMapping)
+    }
+    return { apiUrl, dedicatedFirst, apiKey, authHeaderType, customHeaderName, fieldMapping }
   }
 
   function buildAuthHeaders(apiKey: string, authHeaderType: string, customHeaderName: string): Record<string, string> {
@@ -583,9 +710,9 @@ export function apply(ctx: Context, config: any) {
     }
   }
 
-  async function fetchApi(url: string, type: string): Promise<ParsedData> {
+  async function fetchApi(url: string, type: string, fieldMapping?: Record<string, string>): Promise<ParsedData> {
     const cacheKey = url
-    const cached = urlCache.get(cacheKey)
+    const cached = urlCacheLocal.get(cacheKey)
     if (cached && cached.expire > Date.now()) return cached.data
 
     const { apiUrl: dedicatedUrl, dedicatedFirst, apiKey, authHeaderType, customHeaderName } = getPlatformConfig(type)
@@ -595,15 +722,16 @@ export function apply(ctx: Context, config: any) {
 
     const apiList: ApiItem[] = []
     if (dedicatedFirst && dedicatedUrl) {
-      apiList.push({ url: dedicatedUrl, label: `专属API(${type})`, apiKey, authHeaderType, customHeaderName })
-      apiList.push({ url: primaryApi, label: '默认主API' })
-      if (backupAllowed) apiList.push({ url: backupApi, label: '备用主API' })
+      apiList.push({ url: dedicatedUrl, label: `专属API(${type})`, apiKey, authHeaderType, customHeaderName, fieldMapping })
+      apiList.push({ url: primaryApi, label: '默认主API', fieldMapping })
+      if (backupAllowed) apiList.push({ url: backupApi, label: '备用主API', fieldMapping })
     } else {
-      apiList.push({ url: primaryApi, label: '默认主API' })
-      if (backupAllowed) apiList.push({ url: backupApi, label: '备用主API' })
-      if (dedicatedUrl) apiList.push({ url: dedicatedUrl, label: `专属API(${type})`, apiKey, authHeaderType, customHeaderName })
+      apiList.push({ url: primaryApi, label: '默认主API', fieldMapping })
+      if (backupAllowed) apiList.push({ url: backupApi, label: '备用主API', fieldMapping })
+      if (dedicatedUrl) apiList.push({ url: dedicatedUrl, label: `专属API(${type})`, apiKey, authHeaderType, customHeaderName, fieldMapping })
     }
 
+    const customHeaders = config.customHeaders || []
     let lastError: Error | null = null
     for (const api of apiList) {
       for (let attempt = 0; attempt <= config.retryTimes; attempt++) {
@@ -613,14 +741,17 @@ export function apply(ctx: Context, config: any) {
             'Referer': 'https://www.baidu.com/',
             'Content-Type': 'application/x-www-form-urlencoded'
           }
+          for (const h of customHeaders) {
+            if (h.name && h.value) headers[h.name] = h.value
+          }
           if (api.apiKey) {
             const authHeaders = buildAuthHeaders(api.apiKey, api.authHeaderType || 'Bearer', api.customHeaderName || 'X-API-Key')
             Object.assign(headers, authHeaders)
           }
           const res = await http.get(api.url, { params: { url }, timeout: config.timeout, headers })
           if (res.data && (res.data.code === 200 || res.data.code === 0)) {
-            const parsed = parseApiResponse(res.data, config.maxDescLength)
-            urlCache.set(cacheKey, { data: parsed, expire: Date.now() + 10 * 60 * 1000 })
+            const parsed = parseApiResponse(res.data, config.maxDescLength, api.fieldMapping)
+            urlCacheLocal.set(cacheKey, { data: parsed, expire: Date.now() + cacheTTL })
             return parsed
           }
           throw new Error(res.data?.msg || `API返回错误码: ${res.data?.code}`)
@@ -635,12 +766,12 @@ export function apply(ctx: Context, config: any) {
     throw lastError || new Error('所有API请求全部失败')
   }
 
-  async function parseUrl(url: string, type: string): Promise<{ success: true; data: ParsedData } | { success: false; msg: string }> {
+  async function parseUrl(url: string, type: string, fieldMapping?: Record<string, string>): Promise<{ success: true; data: ParsedData } | { success: false; msg: string }> {
     const realUrl = await resolveShortUrl(url)
     const candidates = [...new Set([realUrl, url])]
     for (const candidate of candidates) {
       try {
-        const info = await fetchApi(candidate, type)
+        const info = await fetchApi(candidate, type, fieldMapping)
         if (info.video || info.images.length > 0) return { success: true, data: info }
         debugLog('WARN', `解析成功但无内容: ${candidate}`)
       } catch (error) {
@@ -650,8 +781,8 @@ export function apply(ctx: Context, config: any) {
     return { success: false, msg: texts.unsupportedPlatformText }
   }
 
-  async function processSingleUrl(url: string, type: string): Promise<{ success: true; data: { text: string; parsed: ParsedData } } | { success: false; msg: string; url: string }> {
-    const result = await parseUrl(url, type)
+  async function processSingleUrl(url: string, type: string, fieldMapping?: Record<string, string>): Promise<{ success: true; data: { text: string; parsed: ParsedData } } | { success: false; msg: string; url: string }> {
+    const result = await parseUrl(url, type, fieldMapping)
     if (!result.success) return { success: false, msg: result.msg, url }
     const text = generateFormattedText(result.data, config.unifiedMessageFormat)
     return { success: true, data: { text, parsed: result.data } }
@@ -711,30 +842,38 @@ export function apply(ctx: Context, config: any) {
     debugLog('INFO', `开始解析 ${matches.length} 个链接`)
     const items: { text: string; parsed: ParsedData }[] = []
     const errors: string[] = []
-    for (let i = 0; i < matches.length; i++) {
-      const match = matches[i]
-      if (config.deduplicationInterval > 0) {
-        const lastTime = dedupCache.get(match.url)
-        if (lastTime && (Date.now() - lastTime < config.deduplicationInterval * 1000)) {
-          debugLog('INFO', `跳过重复链接: ${match.url}`)
-          const shortUrl = match.url.length > 50 ? match.url.slice(0, 50) + '...' : match.url
-          await sendWithTimeout(session, `链接 ${shortUrl} 在最近 ${config.deduplicationInterval} 秒内已解析过，已跳过。`).catch(() => {})
-          continue
+    const limiter = new ConcurrencyLimiter(config.maxConcurrent || 3)
+    const promises = matches.map(async (match) => {
+      await limiter.acquire()
+      try {
+        if (config.deduplicationInterval > 0) {
+          const lastTime = dedupCache.get(match.url)
+          if (lastTime && (Date.now() - lastTime < config.deduplicationInterval * 1000)) {
+            debugLog('INFO', `跳过重复链接: ${match.url}`)
+            const shortUrl = match.url.length > 50 ? match.url.slice(0, 50) + '...' : match.url
+            await sendWithTimeout(session, `链接 ${shortUrl} 在最近 ${config.deduplicationInterval} 秒内已解析过，已跳过。`).catch(() => {})
+            return
+          }
         }
+        debugLog('INFO', `解析链接: ${match.url} (${match.type})`)
+        const fieldMapping = getPlatformConfig(match.type).fieldMapping
+        const result = await processSingleUrl(match.url, match.type, fieldMapping)
+        if (result.success) {
+          items.push(result.data)
+          if (config.deduplicationInterval > 0) dedupCache.set(match.url, Date.now())
+        } else {
+          const item = texts.parseErrorItemFormat.replace(/\$\{url\}/g, match.url.length > 50 ? match.url.slice(0,50)+'...' : match.url).replace(/\$\{msg\}/g, result.msg)
+          errors.push(item)
+        }
+      } finally {
+        limiter.release()
       }
-      debugLog('INFO', `解析第 ${i+1}/${matches.length} 个链接: ${match.url} (${match.type})`)
-      const result = await processSingleUrl(match.url, match.type)
-      if (result.success) {
-        items.push(result.data)
-        if (config.deduplicationInterval > 0) dedupCache.set(match.url, Date.now())
-      } else {
-        const item = texts.parseErrorItemFormat.replace(/\$\{url\}/g, match.url.length > 50 ? match.url.slice(0,50)+'...' : match.url).replace(/\$\{msg\}/g, result.msg)
-        errors.push(item)
-      }
-      if (i < matches.length - 1) await delay(500)
-    }
+    })
+    await Promise.all(promises)
+
     if (errors.length) await sendWithTimeout(session, `${texts.parseErrorPrefix}\n${errors.join('\n')}`)
     if (!items.length) return
+
     const enableForward = config.enableForward && session.platform === 'onebot'
     const botName = config.botName || '视频解析机器人'
     if (enableForward) {
@@ -743,7 +882,7 @@ export function apply(ctx: Context, config: any) {
         const p = item.parsed
         const text = item.text
         if (text && config.showImageText) forwardMessages.push(buildForwardNode(session, text, botName))
-        if (p.cover && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) forwardMessages.push(buildForwardNode(session, h.image(p.cover), botName))
+        if (config.showCoverImage && p.cover && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) forwardMessages.push(buildForwardNode(session, h.image(p.cover), botName))
         if (p.type === 'image' || p.type === 'live_photo' || (p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
           const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? [])
           for (const imgUrl of imageUrls) forwardMessages.push(buildForwardNode(session, h.image(imgUrl), botName))
@@ -766,7 +905,7 @@ export function apply(ctx: Context, config: any) {
         const p = item.parsed
         const text = item.text
         if (text && config.showImageText) { await sendWithTimeout(session, text); await delay(300) }
-        if (p.cover && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) { await sendWithTimeout(session, h.image(p.cover)).catch(() => {}); await delay(300) }
+        if (config.showCoverImage && p.cover && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) { await sendWithTimeout(session, h.image(p.cover)).catch(() => {}); await delay(300) }
         if (p.video && (p.type === 'video' || (p.type === 'live' && !p.live_photo?.length && !p.images?.length))) {
           if (config.showVideoFile) await sendVideoFile(session, p.video)
           else await sendWithTimeout(session, `视频链接：${p.video}`)
@@ -820,7 +959,7 @@ export function apply(ctx: Context, config: any) {
 
   ctx.on('dispose', () => {
     clearInterval(tempCleanupInterval)
-    urlCache.clear()
+    urlCacheLocal.clear()
     dedupCache.clear()
     debugLog('INFO', '插件已卸载')
   })
