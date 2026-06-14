@@ -1273,6 +1273,7 @@ export function apply(ctx: Context, config: any) {
 
   ctx.on('message', async (session) => {
     if (!config.enable) return
+    if (/^\s*parse\b/i.test(session.content || '')) return
     if (session.subtype === 'file_upload') return
     if (session.elements?.some(elem => elem.type === 'file' || elem.type === 'folder')) return
     if (session.selfId === session.userId) return
