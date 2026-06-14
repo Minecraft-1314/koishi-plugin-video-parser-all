@@ -178,16 +178,6 @@ export const Config = Schema.intersect([
   Schema.object({
     primaryApiUrl: Schema.string().default('https://api.bugpk.com/api/short_videos').hidden(),
     backupApiUrl: Schema.string().default('https://api.bugpk.com/api/svparse').hidden(),
-    apiKeys: Schema.array(
-      Schema.object({
-        key: Schema.string().required().description('API Key'),
-        weight: Schema.number().min(1).default(1).description('权重（负载均衡模式）'),
-      })
-    ).default([]).description('多 API 密钥（轮换使用）'),
-    rotationMode: Schema.union([
-      Schema.const('sequential').description('顺序模式（无效时切换）'),
-      Schema.const('load_balance').description('负载均衡模式（轮询）'),
-    ]).default('sequential').description('密钥轮换模式'),
     platformDedicatedFirst: Schema.object({
       bilibili: Schema.boolean().default(false).description('哔哩哔哩'),
       douyin: Schema.boolean().default(false).description('抖音'),
@@ -753,9 +743,6 @@ function parseFieldMapping(mappingStr: string): Record<string, string> | undefin
 }
 
 export function apply(ctx: Context, config: any) {
-  // @ts-expect-error koishi runtime supports optional service dependencies
-  ctx.using(['downloads', 'silk', 'ffmpeg'], { optional: true })
-
   debugEnabled = config.debug || false
   debugLog('INFO', 'plugin start')
 
@@ -805,37 +792,6 @@ export function apply(ctx: Context, config: any) {
     }
   }
 
-  const apiKeyList: Array<{ key: string; weight: number; lastUsed: number }> = (config.apiKeys || []).map((k: any) => ({
-    key: k.key,
-    weight: k.weight || 1,
-    lastUsed: 0
-  }))
-  let keyIndex = 0
-
-  function getNextApiKey(): string {
-    if (apiKeyList.length === 0) return ''
-    if (config.rotationMode === 'load_balance') {
-      const totalWeight = apiKeyList.reduce((sum, k) => sum + k.weight, 0)
-      let rand = Math.random() * totalWeight
-      for (const k of apiKeyList) {
-        rand -= k.weight
-        if (rand <= 0) return k.key
-      }
-      return apiKeyList[0].key
-    } else {
-      const current = apiKeyList[keyIndex % apiKeyList.length]
-      keyIndex++
-      return current.key
-    }
-  }
-
-  function markApiKeyInvalid(key: string) {
-    if (config.rotationMode === 'sequential') {
-      const idx = apiKeyList.findIndex(k => k.key === key)
-      if (idx !== -1) apiKeyList.splice(idx, 1)
-    }
-  }
-
   function getPlatformConfig(type: string): { apiUrl: string | null; dedicatedFirst: boolean; apiKey: string; authHeaderType: string; customHeaderName: string; fieldMapping?: Record<string, string>; customProxy?: any } {
     if (type.startsWith('custom_')) {
       const name = type.slice(7)
@@ -844,7 +800,7 @@ export function apply(ctx: Context, config: any) {
         return {
           apiUrl: custom.apiUrl,
           dedicatedFirst: true,
-          apiKey: custom.apiKey || getNextApiKey(),
+          apiKey: custom.apiKey || '',
           authHeaderType: custom.authHeaderType,
           customHeaderName: custom.customHeaderName,
           fieldMapping: custom.fieldMapping,
@@ -877,12 +833,12 @@ export function apply(ctx: Context, config: any) {
     let fieldMapping: Record<string, string> | undefined = undefined
     if (custom && custom.apiUrl) {
       apiUrl = custom.apiUrl
-      apiKey = custom.apiKey || getNextApiKey()
+      apiKey = custom.apiKey || ''
       authHeaderType = custom.authHeaderType || 'Bearer'
       customHeaderName = custom.customHeaderName || 'X-API-Key'
       fieldMapping = parseFieldMapping(custom.fieldMapping)
     } else {
-      apiKey = getNextApiKey()
+      apiKey = ''
     }
     const dedicatedFirst = config.platformDedicatedFirst?.[type] ?? false
     if (!fieldMapping) {
@@ -1235,9 +1191,6 @@ export function apply(ctx: Context, config: any) {
             const parsed = parseApiResponse(res.data, config.maxDescLength, api.fieldMapping)
             urlCacheLocal.set(cacheKey, { data: parsed, expire: Date.now() + cacheTTL })
             return parsed
-          }
-          if (res.data?.code === 403 || res.data?.code === 401) {
-            if (api.apiKey) markApiKeyInvalid(api.apiKey)
           }
           throw new Error(res.data?.msg || `API返回错误码: ${res.data?.code}`)
         } catch (error) {
