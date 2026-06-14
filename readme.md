@@ -20,89 +20,94 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 
 ## 配置项说明 (Configuration)
 
-### 基础设置 (Basic Settings)
+### 基本设置
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `enable` | boolean | true | 是否启用视频解析插件 |
-| `botName` | string | 视频解析机器人 | 合并转发消息中显示的机器人名称 |
-| `showWaitingTip` | boolean | true | 解析时是否显示等待提示 |
-| `debug` | boolean | false | 是否开启 Debug 模式，在控制台输出详细日志 |
-| `platformEnabled` | object | 各平台均为 `true` | 各平台解析开关，可单独关闭某平台 |
+| `enable` | boolean | true | 启用插件 |
+| `botName` | string | 视频解析机器人 | 合并转发中的昵称 |
+| `showWaitingTip` | boolean | true | 显示等待提示 |
+| `debug` | boolean | false | Debug 日志 |
+| `platformEnabled` | object | 全开 | 各平台开关 |
 
-### 统一消息格式 (Unified Message Format)
+### 消息格式
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `unifiedMessageFormat` | string | `标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}` | 文字消息格式，支持变量替换。空行自动隐藏。 |
+| `unifiedMessageFormat` | string | 见预设 | 文字格式，支持变量，空行自动隐藏 |
 
-### 内容显示设置 (Content Display Settings)
+### 媒体发送
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `showImageText` | boolean | true | 是否发送文字内容 |
-| `showCoverImage` | boolean | true | 是否发送封面图片（视频/图集封面） |
-| `showMusicCover` | boolean | true | 是否发送音乐封面图片 |
-| `showImageFile` | boolean | true | 封面/图片是否以文件形式发送（关闭则只发链接） |
-| `forceDownloadImage` | boolean | false | 强制下载封面/图片后发送 |
-| `imageDownloadTimeout` | number | 60000 | 图片下载超时（毫秒） |
-| `imageTempDir` | string | `./temp_images` | 临时封面/图片存储目录 |
-| `maxImageSize` | number | 0 | 最大下载图片大小（MB），0 不限制 |
-| `showVideoFile` | boolean | true | 视频是否以文件形式发送（关闭则只发链接） |
-| `forceDownloadVideo` | boolean | false | 强制下载视频后发送 |
-| `videoDownloadTimeout` | number | 120000 | 视频下载超时（毫秒） |
-| `tempDir` | string | `./temp_videos` | 临时视频存储目录 |
-| `maxVideoSize` | number | 0 | 最大下载视频大小（MB），0 不限制 |
-| `maxDescLength` | number | 200 | 简介最大长度（字符） |
+| `showImageText` | boolean | true | 发送文字内容 |
+| `showCoverImage` | boolean | true | 发送封面图片 |
+| `showMusicCover` | boolean | true | 发送音乐封面 |
+| `showImageFile` | boolean | true | 封面/图片是否以图片形式发送（关闭则只发送链接） |
+| `showVideoFile` | boolean | true | 视频是否以视频形式发送（关闭则只发送链接） |
+| `forceDownloadImage` | boolean | false | 强制下载封面/图片 |
+| `forceDownloadVideo` | boolean | false | 强制下载视频 |
+
+### 音乐语音（需 silk 和 ffmpeg）
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `showMusicVoice` | boolean | false | 音乐链接以语音发送 |
+| `showMusicVoiceFile` | boolean | true | 音乐语音是否以文件形式发送（关闭则只发送链接） |
+| `forceDownloadMusicVoice` | boolean | false | 强制下载音乐语音 |
+
+### 性能与限制
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `maxDescLength` | number | 200 | 简介长度上限 |
 | `maxConcurrent` | number | 3 | 解析最大并发数 |
-| `downloadConcurrency` | number | 3 | 下载线程数（≥1 整数） |
-| `showMusicVoice` | boolean | false | 是否发送音乐（转语音）。**需要依赖 `koishi-plugin-silk` 和 `koishi-plugin-ffmpeg`** |
-| `showMusicVoiceFile` | boolean | true | 音乐语音是否以文件形式发送（关闭则只发链接） |
-| `forceDownloadMusicVoice` | boolean | false | 强制下载音乐语音后发送 |
-| `musicDownloadTimeout` | number | 120000 | 音乐下载超时（毫秒） |
-| `musicTempDir` | string | `./temp_music` | 临时音乐存储目录 |
-| `maxMusicSize` | number | 0 | 最大下载音乐大小（MB），0 不限制 |
+| `downloadConcurrency` | number | 3 | 下载线程数 |
+| `mediaDownloadTimeout` | number | 120000 | 统一下载超时 (ms) |
+| `maxMediaSize` | number | 0 | 最大下载文件大小 (MB)，0 为不限制 |
+| `downloadEngine` | string | internal | 下载引擎（internal / aria2） |
+| `aria2Host` | string | 127.0.0.1 | aria2 RPC 地址 |
+| `aria2Port` | number | 6800 | aria2 RPC 端口 |
+| `aria2Secret` | string |  | aria2 RPC 密钥 |
+| `resumeDownload` | boolean | true | 启用断点续传（仅 aria2） |
 
-### 网络与 API 设置 (Network & API Settings)
+### 网络与请求
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `timeout` | number | 180000 | API 请求超时时间（毫秒） |
-| `videoSendTimeout` | number | 60000 | 消息发送超时时间（毫秒，0 为不限制） |
-| `userAgent` | string | `Mozilla/5.0 ...` | User-Agent |
-| `proxy` | object | `{ enabled: false, protocol: "http", host: "127.0.0.1", port: 7890, auth: { username: "", password: "" } }` | HTTP/HTTPS 代理。`enabled` 开关（默认关闭），`protocol` 下拉选择 `http` 或 `https` |
-| `customHeaders` | array | [] | 自定义请求头，每项含 `name` 和 `value` |
+| `timeout` | number | 180000 | API 超时 (ms) |
+| `videoSendTimeout` | number | 180000 | 发送超时 (ms) |
+| `userAgent` | string | 见预设 | User-Agent |
+| `proxy` | object | ... | HTTP/HTTPS 代理 |
+| `customHeaders` | array | [] | 自定义请求头 |
 
-### API 选择与回退设置 (API Selection & Fallback)
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `platformDedicatedFirst` | object | 各平台均为 `false` | 平台专属 API 优先开关，键：`bilibili` 等 |
-| `customApis` | array | [] | 自定义内置平台专属 API，含 `platform`, `apiUrl`, `apiKey`, `authHeaderType`, `customHeaderName`, `fieldMapping` |
-| `customPlatforms` | array | [] | 完全自定义新平台。每项含：`name`（平台名称）、`exampleUrl`（示例链接）、`keywords`（匹配关键词，逗号分隔）、`apiUrl`（解析API）、`apiKey`、`authHeaderType`、`customHeaderName`、`fieldMapping`、`proxy`（独立代理） |
-| `globalFieldMapping` | string | 预设字段映射 JSON | 全局字段映射，支持点号路径 |
-
-### 错误与重试设置 (Error & Retry Settings)
+### 发送与重试
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `ignoreSendError` | boolean | true | 忽略发送失败 |
 | `retryTimes` | number | 3 | 重试次数 |
-| `retryInterval` | number | 1000 | 重试间隔（毫秒） |
+| `retryInterval` | number | 1000 | 重试间隔 (ms) |
+| `enableForward` | boolean | false | 合并转发（OneBot/Satori） |
 
-### 发送方式设置 (Send Mode Settings)
+### 缓存与临时文件
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `enableForward` | boolean | false | 启用合并转发（支持 OneBot、Satori 平台） |
+| `deduplicationInterval` | number | 180 | 去重间隔 (s) |
+| `cacheTTL` | number | 600 | 缓存时间 (s) |
+| `cacheDir` | string | ./temp_cache | 统一临时目录 |
 
-### 缓存与去重设置 (Cache & Deduplication Settings)
+### API 与平台
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `deduplicationInterval` | number | 180 | 去重间隔（秒） |
-| `cacheTTL` | number | 600 | 缓存时间（秒） |
+| `apiKeys` | array | [] | 多 API 密钥列表 |
+| `rotationMode` | string | sequential | 密钥轮换模式（sequential / load_balance） |
+| `platformDedicatedFirst` | object | 全关 | 优先专属 API |
+| `customApis` | array | [] | 覆盖内置平台 API |
+| `customPlatforms` | array | [] | 自定义新平台 |
+| `globalFieldMapping` | string | 预设 | 全局字段映射 JSON |
 
-### 界面文字设置 (UI Text Settings)
+### 界面文本
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `waitingTipText` | string | 正在解析视频，请稍候... | 等待提示 |
-| `unsupportedPlatformText` | string | 不支持该平台链接 | 不支持平台提示 |
-| `invalidLinkText` | string | 无效的视频链接 | 无效链接提示 |
+| `waitingTipText` | string | 正在解析... | 等待提示 |
+| `unsupportedPlatformText` | string | 不支持该平台 | 不支持提示 |
+| `invalidLinkText` | string | 无效链接 | 无效链接提示 |
 | `parseErrorPrefix` | string | ❌ 解析失败： | 错误前缀 |
-| `parseErrorItemFormat` | string | `【${url}】: ${msg}` | 错误项格式 |
+| `parseErrorItemFormat` | string | ... | 错误格式 |
 
 ## 支持的变量 (Supported Variables)
 在 `unifiedMessageFormat` 中可使用以下变量，空行自动隐藏：
@@ -125,13 +130,19 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | `${音乐标题}` | 音乐标题 |
 | `${音乐作者}` | 音乐作者 |
 
-## 音乐语音依赖说明 (Music Voice Dependencies)
-若启用 `showMusicVoice`，请确保已安装以下 Koishi 插件：
-- `koishi-plugin-silk`：提供 silk 编解码支持
-- `koishi-plugin-ffmpeg`：提供音频重采样支持
-
-这些依赖已声明为可选依赖
-若未安装，音乐语音将尝试直接发送原始音频，部分平台可能无法播放。
+## 依赖说明 (Dependencies)
+### 音乐语音（可选）
+若启用 `showMusicVoice`，请安装：
+- `koishi-plugin-silk`：silk 编解码
+- `koishi-plugin-ffmpeg`：音频重采样
+### aria2 下载引擎（可选）
+若启用 `downloadEngine: 'aria2'`，请安装并启动 aria2 服务，并安装 npm 包 `aria2`：
+- 安装 aria2 服务端：https://github.com/aria2/aria2
+- 安装 npm 客户端：`npm install aria2`
+- 启动 RPC：`aria2c --enable-rpc --rpc-listen-all=true --rpc-allow-origin-all`
+未满足条件时自动降级为内置下载，不影响正常使用。
+### downloads 服务（可选）
+插件会自动检测 Koishi 内置 `downloads` 服务，优先使用其下载文件，失败时回退到内置/aria2 下载。
 
 ## 支持的平台 (Supported Platforms)
 | 平台名称 | 关键词识别 | 解析能力 |
@@ -150,21 +161,18 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | YouTube（油管） | youtube, youtu.be | 视频 |
 | TikTok（国际版抖音） | tiktok, tiktok.com | 短视频 |
 | 好看视频 | haokan, haokan.baidu.com | 短视频 |
-| 梨视频 | video.li | 短视频 |
 | 美拍 | meipai, meipai.com | 短视频 |
-| 全民直播 | quanmin (quanmin.tv) | 直播 |
 | Twitter / X | twitter, x.com | 视频、图文 |
 | Instagram | instagram, instagram.com | 图文、Reels |
 | 豆包 | doubao (doubao.com/video) | 视频 |
-| 豆包对话 | doubao (doubao.com/thread) | 对话分享 |
 | 皮皮搞笑 | pipigx, h5.pipigx.com | 短视频 |
 | 皮皮虾 | pipixia, h5.pipix.com | 短视频 |
 | 最右 | zuiyou, xiaochuankeji.cn | 短视频 |
+| 梨视频 | video.li, pearvideo.com | 短视频 |
+| 全民直播 | quanmin (quanmin.tv) | 直播 |
 | 绿洲 (Oasis) | oasis.weibo.com | 视频、图文 |
 | 视频号 (WeChat Channels) | channels.weixin.qq.com, weixin.qq.com/sph/ | 短视频 |
 | 🔧 自定义平台 | 通过 `customPlatforms` 添加 | 取决于 API |
-
-> 注：部分平台解析能力可能因API限制有所差异。可通过 `platformEnabled` 单独关闭。
 
 ## 项目贡献者 (Contributors)
 

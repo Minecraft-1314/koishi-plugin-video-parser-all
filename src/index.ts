@@ -6,6 +6,14 @@ import { createWriteStream } from 'fs'
 import { pipeline } from 'stream/promises'
 import { randomBytes } from 'crypto'
 
+declare module 'koishi' {
+  interface Context {
+    downloads?: {
+      download(url: string, dest: string, options?: Record<string, unknown>): Promise<string>
+    }
+  }
+}
+
 class SimpleLRUCache<V> {
   private map = new Map<string, { value: V; expireAt: number }>()
   constructor(private max: number, private ttlMs: number) {}
@@ -60,9 +68,9 @@ export const name = 'video-parser-all'
 export const Config = Schema.intersect([
   Schema.object({
     enable: Schema.boolean().default(true).description('是否启用视频解析插件'),
-    botName: Schema.string().default('视频解析机器人').description('合并转发消息中显示的机器人名称'),
+    botName: Schema.string().default('视频解析机器人').description('合并转发中显示的昵称'),
     showWaitingTip: Schema.boolean().default(true).description('解析时显示等待提示'),
-    debug: Schema.boolean().default(false).description('开启调试模式，在控制台输出详细日志'),
+    debug: Schema.boolean().default(false).description('开启调试日志'),
     platformEnabled: Schema.object({
       bilibili: Schema.boolean().default(true).description('哔哩哔哩'),
       douyin: Schema.boolean().default(true).description('抖音'),
@@ -81,46 +89,57 @@ export const Config = Schema.intersect([
       twitter: Schema.boolean().default(true).description('Twitter/X'),
       instagram: Schema.boolean().default(true).description('Instagram'),
       doubao: Schema.boolean().default(true).description('豆包'),
-      doubao_chat: Schema.boolean().default(true).description('豆包对话'),
       oasis: Schema.boolean().default(true).description('绿洲'),
       wechat_channel: Schema.boolean().default(true).description('视频号'),
+      lishi: Schema.boolean().default(true).description('梨视频'),
+      quanmin: Schema.boolean().default(true).description('全民直播'),
+      pipigx: Schema.boolean().default(true).description('皮皮搞笑'),
+      pipixia: Schema.boolean().default(true).description('皮皮虾'),
+      zuiyou: Schema.boolean().default(true).description('最右'),
     }).description('各平台解析开关'),
-  }).description('基础设置'),
+  }).description('基本设置'),
 
   Schema.object({
     unifiedMessageFormat: Schema.string().role('textarea').default(
       '标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}'
-    ).description('文字消息格式，支持变量。某行所有变量为空时自动隐藏。封面及媒体文件由独立开关控制，默认不包含在文字中'),
-  }).description('消息格式设置'),
+    ).description('文字格式，支持变量，空行自动隐藏'),
+  }).description('消息格式'),
 
   Schema.object({
-    showImageText: Schema.boolean().default(true).description('是否发送文字内容'),
-    showCoverImage: Schema.boolean().default(true).description('是否发送封面图片（视频/图集封面）'),
-    showMusicCover: Schema.boolean().default(true).description('是否发送音乐封面图片'),
-    showImageFile: Schema.boolean().default(true).description('封面/图片是否以文件形式发送（关闭则只发送链接）'),
-    forceDownloadImage: Schema.boolean().default(false).description('强制下载封面/图片后发送'),
-    imageDownloadTimeout: Schema.number().min(0).step(1).default(60000).description('图片下载超时（毫秒）'),
-    imageTempDir: Schema.string().default('./temp_images').description('临时封面/图片存储目录'),
-    maxImageSize: Schema.number().min(0).step(1).default(0).description('最大下载图片大小（MB），0 为不限制'),
-    showVideoFile: Schema.boolean().default(true).description('视频是否以文件形式发送（关闭则只发送链接）'),
-    forceDownloadVideo: Schema.boolean().default(false).description('强制下载视频后发送'),
-    videoDownloadTimeout: Schema.number().min(0).step(1).default(120000).description('视频下载超时（毫秒）'),
-    tempDir: Schema.string().default('./temp_videos').description('临时视频存储目录'),
-    maxVideoSize: Schema.number().min(0).step(1).default(0).description('最大下载视频大小（MB），0 为不限制'),
-    maxDescLength: Schema.number().min(0).step(1).default(200).description('简介最大长度（字符）'),
+    showImageText: Schema.boolean().default(true).description('发送文字内容'),
+    showCoverImage: Schema.boolean().default(true).description('发送封面图片'),
+    showMusicCover: Schema.boolean().default(true).description('发送音乐封面图片'),
+    showImageFile: Schema.boolean().default(true).description('封面/图片是否以图片形式发送（关闭则只发送链接）'),
+    showVideoFile: Schema.boolean().default(true).description('视频是否以视频形式发送（关闭则只发送链接）'),
+    forceDownloadImage: Schema.boolean().default(false).description('强制下载封面/图片'),
+    forceDownloadVideo: Schema.boolean().default(false).description('强制下载视频'),
+  }).description('媒体发送'),
+
+  Schema.object({
+    showMusicVoice: Schema.boolean().default(false).description('音乐链接以语音形式发送'),
+    showMusicVoiceFile: Schema.boolean().default(true).description('音乐语音是否以文件形式发送（关闭则只发送链接）'),
+    forceDownloadMusicVoice: Schema.boolean().default(false).description('强制下载音乐语音'),
+  }).description('音乐语音（需 silk 和 ffmpeg）'),
+
+  Schema.object({
+    maxDescLength: Schema.number().min(0).step(1).default(200).description('简介长度上限'),
     maxConcurrent: Schema.number().min(1).step(1).default(3).description('解析最大并发数'),
     downloadConcurrency: Schema.number().min(1).step(1).default(3).description('下载线程数'),
-    showMusicVoice: Schema.boolean().default(false).description('是否发送音乐（转语音）'),
-    showMusicVoiceFile: Schema.boolean().default(true).description('音乐语音是否以文件形式发送（关闭则只发送链接）'),
-    forceDownloadMusicVoice: Schema.boolean().default(false).description('强制下载音乐语音后发送'),
-    musicDownloadTimeout: Schema.number().min(0).step(1).default(120000).description('音乐下载超时（毫秒）'),
-    musicTempDir: Schema.string().default('./temp_music').description('临时音乐存储目录'),
-    maxMusicSize: Schema.number().min(0).step(1).default(0).description('最大下载音乐大小（MB），0 为不限制'),
-  }).description('内容显示设置'),
+    mediaDownloadTimeout: Schema.number().min(0).step(1).default(120000).description('统一下载超时 (ms)'),
+    maxMediaSize: Schema.number().min(0).step(1).default(0).description('最大下载文件大小 (MB)，0 为不限制'),
+    downloadEngine: Schema.union([
+      Schema.const('internal').description('内置下载'),
+      Schema.const('aria2').description('aria2 下载'),
+    ]).default('internal').description('下载引擎'),
+    aria2Host: Schema.string().default('127.0.0.1').description('aria2 RPC 地址'),
+    aria2Port: Schema.number().default(6800).description('aria2 RPC 端口'),
+    aria2Secret: Schema.string().default('').description('aria2 RPC 密钥'),
+    resumeDownload: Schema.boolean().default(true).description('启用断点续传（仅 aria2 模式）'),
+  }).description('性能与限制'),
 
   Schema.object({
-    timeout: Schema.number().min(0).step(1).default(180000).description('API 请求超时（毫秒）'),
-    videoSendTimeout: Schema.number().min(0).step(1).default(60000).description('消息发送超时（毫秒）'),
+    timeout: Schema.number().min(0).step(1).default(180000).description('API 请求超时 (ms)'),
+    videoSendTimeout: Schema.number().min(0).step(1).default(180000).description('消息发送超时 (ms)'),
     userAgent: Schema.string().default('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36').description('User-Agent'),
     proxy: Schema.object({
       enabled: Schema.boolean().default(false).description('启用代理'),
@@ -141,26 +160,34 @@ export const Config = Schema.intersect([
         value: Schema.string().required().description('头值'),
       })
     ).default([]).description('自定义请求头'),
-  }).description('网络设置'),
+  }).description('网络与请求'),
 
   Schema.object({
     ignoreSendError: Schema.boolean().default(true).description('忽略发送失败'),
     retryTimes: Schema.number().min(0).step(1).default(3).description('重试次数'),
-    retryInterval: Schema.number().min(0).step(1).default(1000).description('重试间隔（毫秒）'),
-  }).description('错误与重试'),
+    retryInterval: Schema.number().min(0).step(1).default(1000).description('重试间隔 (ms)'),
+    enableForward: Schema.boolean().default(false).description('合并转发（OneBot/Satori）'),
+  }).description('发送与重试'),
 
   Schema.object({
-    enableForward: Schema.boolean().default(false).description('启用合并转发（支持 OneBot、Satori 平台）'),
-  }).description('发送方式'),
-
-  Schema.object({
-    deduplicationInterval: Schema.number().min(0).step(1).default(180).description('去重间隔（秒）'),
-    cacheTTL: Schema.number().min(0).step(1).default(600).description('缓存时间（秒）'),
-  }).description('缓存与去重'),
+    deduplicationInterval: Schema.number().min(0).step(1).default(180).description('去重间隔 (s)'),
+    cacheTTL: Schema.number().min(0).step(1).default(600).description('缓存时间 (s)'),
+    cacheDir: Schema.string().default('./temp_cache').description('统一临时目录'),
+  }).description('缓存与临时文件'),
 
   Schema.object({
     primaryApiUrl: Schema.string().default('https://api.bugpk.com/api/short_videos').hidden(),
     backupApiUrl: Schema.string().default('https://api.bugpk.com/api/svparse').hidden(),
+    apiKeys: Schema.array(
+      Schema.object({
+        key: Schema.string().required().description('API Key'),
+        weight: Schema.number().min(1).default(1).description('权重（负载均衡模式）'),
+      })
+    ).default([]).description('多 API 密钥（轮换使用）'),
+    rotationMode: Schema.union([
+      Schema.const('sequential').description('顺序模式（无效时切换）'),
+      Schema.const('load_balance').description('负载均衡模式（轮询）'),
+    ]).default('sequential').description('密钥轮换模式'),
     platformDedicatedFirst: Schema.object({
       bilibili: Schema.boolean().default(false).description('哔哩哔哩'),
       douyin: Schema.boolean().default(false).description('抖音'),
@@ -179,9 +206,13 @@ export const Config = Schema.intersect([
       twitter: Schema.boolean().default(false).description('Twitter/X'),
       instagram: Schema.boolean().default(false).description('Instagram'),
       doubao: Schema.boolean().default(false).description('豆包'),
-      doubao_chat: Schema.boolean().default(false).description('豆包对话'),
       oasis: Schema.boolean().default(false).description('绿洲'),
       wechat_channel: Schema.boolean().default(false).description('视频号'),
+      lishi: Schema.boolean().default(false).description('梨视频'),
+      quanmin: Schema.boolean().default(false).description('全民直播'),
+      pipigx: Schema.boolean().default(false).description('皮皮搞笑'),
+      pipixia: Schema.boolean().default(false).description('皮皮虾'),
+      zuiyou: Schema.boolean().default(false).description('最右'),
     }).description('优先使用专属 API'),
     customApis: Schema.array(
       Schema.object({
@@ -203,7 +234,6 @@ export const Config = Schema.intersect([
           Schema.const('twitter').description('Twitter/X'),
           Schema.const('instagram').description('Instagram'),
           Schema.const('doubao').description('豆包'),
-          Schema.const('doubao_chat').description('豆包对话'),
           Schema.const('oasis').description('绿洲'),
           Schema.const('wechat_channel').description('视频号'),
         ]).description('平台'),
@@ -217,13 +247,13 @@ export const Config = Schema.intersect([
         customHeaderName: Schema.string().default('X-API-Key').description('自定义头名称'),
         fieldMapping: Schema.string().role('textarea').default('{}').description('字段映射 JSON'),
       })
-    ).default([]).description('自定义内置平台专属 API'),
+    ).default([]).description('覆盖内置平台 API'),
     customPlatforms: Schema.array(
       Schema.object({
         name: Schema.string().required().description('平台名称'),
-        exampleUrl: Schema.string().description('示例视频链接'),
-        keywords: Schema.string().required().description('匹配关键词，逗号分隔'),
-        apiUrl: Schema.string().required().description('解析 API 地址'),
+        exampleUrl: Schema.string().description('示例链接'),
+        keywords: Schema.string().required().description('关键词（逗号分隔）'),
+        apiUrl: Schema.string().required().description('解析 API'),
         apiKey: Schema.string().default('').description('API Key'),
         authHeaderType: Schema.union([
           Schema.const('Bearer').description('Bearer'),
@@ -272,15 +302,15 @@ export const Config = Schema.intersect([
       '  "music_url": "data.music.url"\n' +
       '}'
     ).description('全局字段映射 JSON'),
-  }).description('API 选择'),
+  }).description('API 与平台'),
 
   Schema.object({
     waitingTipText: Schema.string().default('正在解析视频，请稍候...').description('等待提示'),
     unsupportedPlatformText: Schema.string().default('不支持该平台链接').description('不支持提示'),
     invalidLinkText: Schema.string().default('无效的视频链接').description('无效链接提示'),
     parseErrorPrefix: Schema.string().default('❌ 解析失败：').description('错误前缀'),
-    parseErrorItemFormat: Schema.string().default('【${url}】: ${msg}').description('错误项格式'),
-  }).description('界面文字'),
+    parseErrorItemFormat: Schema.string().default('【${url}】: ${msg}').description('错误格式'),
+  }).description('界面文本'),
 ])
 
 interface VideoQuality {
@@ -370,10 +400,19 @@ const BUILTIN_LINK_RULES: { pattern: RegExp; type: string }[] = [
   { pattern: /https?:\/\/x\.com\/\w+\/status\/\d{10,}/gi, type: 'twitter' },
   { pattern: /https?:\/\/(?:www\.)?instagram\.com\/p\/[0-9a-zA-Z_-]{10,}/gi, type: 'instagram' },
   { pattern: /https?:\/\/(?:www\.)?doubao\.com\/video\/\d{10,}/gi, type: 'doubao' },
-  { pattern: /https?:\/\/(?:www\.)?doubao\.com\/thread\/[0-9a-zA-Z_-]+/gi, type: 'doubao_chat' },
   { pattern: /https?:\/\/(?:www\.)?oasis\.weibo\.com\/v\/[0-9a-zA-Z_-]+/gi, type: 'oasis' },
   { pattern: /https?:\/\/channels\.weixin\.qq\.com\/[0-9a-zA-Z_-]+/gi, type: 'wechat_channel' },
   { pattern: /https?:\/\/weixin\.qq\.com\/sph\/[0-9a-zA-Z_-]+/gi, type: 'wechat_channel' },
+  { pattern: /https?:\/\/(?:www\.)?pearvideo\.com\/video_\d+/gi, type: 'lishi' },
+  { pattern: /https?:\/\/video\.li\/[0-9a-zA-Z_-]{3,}/gi, type: 'lishi' },
+  { pattern: /https?:\/\/(?:www\.)?quanmin\.tv\/\w+/gi, type: 'quanmin' },
+  { pattern: /https?:\/\/(?:www\.)?quanmintv\.cn\/\w+/gi, type: 'quanmin' },
+  { pattern: /https?:\/\/h5\.pipigx\.com\/pp\/post\/\d+/gi, type: 'pipigx' },
+  { pattern: /https?:\/\/(?:www\.)?ippzone\.com\/\w+/gi, type: 'pipigx' },
+  { pattern: /https?:\/\/(?:h5|www)\.pipix\.com\/\w+/gi, type: 'pipixia' },
+  { pattern: /https?:\/\/(?:www\.)?pipixia\.com\/\w+/gi, type: 'pipixia' },
+  { pattern: /https?:\/\/share\.xiaochuankeji\.cn\/hybrid\/share\/post\?pid=\d+/gi, type: 'zuiyou' },
+  { pattern: /https?:\/\/(?:h5|www)\.izuiyou\.com\/\w+/gi, type: 'zuiyou' },
 ]
 
 function buildCustomLinkRules(customPlatforms: any[]): { pattern: RegExp; type: string }[] {
@@ -657,6 +696,10 @@ function generateFormattedText(p: ParsedData, format: string): string {
     '音乐作者': p.music.author || '',
     '音乐封面': p.music.cover || '',
   }
+  const varReplacements = Object.entries(vars).map(([key, val]) => ({
+    regex: new RegExp(`\\$\\{${key}\\}`, 'g'),
+    value: val,
+  }))
   const lines = format.split('\n')
   const resultLines: string[] = []
   for (const line of lines) {
@@ -674,8 +717,8 @@ function generateFormattedText(p: ParsedData, format: string): string {
       if (allEmptyOrZero) continue
     }
     let newLine = line
-    for (const [key, val] of Object.entries(vars)) {
-      newLine = newLine.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), val)
+    for (const { regex, value } of varReplacements) {
+      newLine = newLine.replace(regex, value)
     }
     resultLines.push(newLine)
   }
@@ -694,7 +737,7 @@ function buildForwardNode(session: any, content: any, botName: string) {
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
-  if (error && typeof error === 'object' && 'message' in error) return String((error as any).message)
+  if (error && typeof error === 'object' && 'message' in error) return String((error as Record<string, unknown>).message)
   return String(error)
 }
 
@@ -710,6 +753,9 @@ function parseFieldMapping(mappingStr: string): Record<string, string> | undefin
 }
 
 export function apply(ctx: Context, config: any) {
+  // @ts-expect-error koishi runtime supports optional service dependencies
+  ctx.using(['downloads', 'silk', 'ffmpeg'], { optional: true })
+
   debugEnabled = config.debug || false
   debugLog('INFO', 'plugin start')
 
@@ -726,6 +772,7 @@ export function apply(ctx: Context, config: any) {
   }
 
   const proxyConfig = config.proxy || {}
+  const cacheDir = config.cacheDir || './temp_cache'
   const customPlatforms: CustomPlatformConfig[] = (config.customPlatforms || []).map((p: any) => ({
     name: p.name,
     apiUrl: p.apiUrl,
@@ -737,6 +784,57 @@ export function apply(ctx: Context, config: any) {
   }))
 
   const downloadLimiter = new ConcurrencyLimiter(config.downloadConcurrency || 3)
+  const mediaDownloadTimeout = config.mediaDownloadTimeout ?? 120000
+  const maxMediaSize = config.maxMediaSize ?? 0
+  const downloadEngine = config.downloadEngine || 'internal'
+  let aria2: any = null
+  if (downloadEngine === 'aria2') {
+    try {
+      const Aria2 = require('aria2')
+      aria2 = new Aria2({
+        host: config.aria2Host || '127.0.0.1',
+        port: config.aria2Port || 6800,
+        secure: false,
+        secret: config.aria2Secret || '',
+        path: '/jsonrpc'
+      })
+      aria2.open()
+      logger.info('aria2 连接成功')
+    } catch (e) {
+      logger.warn('aria2 连接失败，回退到内置下载')
+    }
+  }
+
+  const apiKeyList: Array<{ key: string; weight: number; lastUsed: number }> = (config.apiKeys || []).map((k: any) => ({
+    key: k.key,
+    weight: k.weight || 1,
+    lastUsed: 0
+  }))
+  let keyIndex = 0
+
+  function getNextApiKey(): string {
+    if (apiKeyList.length === 0) return ''
+    if (config.rotationMode === 'load_balance') {
+      const totalWeight = apiKeyList.reduce((sum, k) => sum + k.weight, 0)
+      let rand = Math.random() * totalWeight
+      for (const k of apiKeyList) {
+        rand -= k.weight
+        if (rand <= 0) return k.key
+      }
+      return apiKeyList[0].key
+    } else {
+      const current = apiKeyList[keyIndex % apiKeyList.length]
+      keyIndex++
+      return current.key
+    }
+  }
+
+  function markApiKeyInvalid(key: string) {
+    if (config.rotationMode === 'sequential') {
+      const idx = apiKeyList.findIndex(k => k.key === key)
+      if (idx !== -1) apiKeyList.splice(idx, 1)
+    }
+  }
 
   function getPlatformConfig(type: string): { apiUrl: string | null; dedicatedFirst: boolean; apiKey: string; authHeaderType: string; customHeaderName: string; fieldMapping?: Record<string, string>; customProxy?: any } {
     if (type.startsWith('custom_')) {
@@ -746,7 +844,7 @@ export function apply(ctx: Context, config: any) {
         return {
           apiUrl: custom.apiUrl,
           dedicatedFirst: true,
-          apiKey: custom.apiKey,
+          apiKey: custom.apiKey || getNextApiKey(),
           authHeaderType: custom.authHeaderType,
           customHeaderName: custom.customHeaderName,
           fieldMapping: custom.fieldMapping,
@@ -761,7 +859,6 @@ export function apply(ctx: Context, config: any) {
       bilibili: 'https://api.bugpk.com/api/bilibili',
       douyin: 'https://api.bugpk.com/api/douyin',
       doubao: 'https://api.bugpk.com/api/dbvideos',
-      doubao_chat: 'https://api.bugpk.com/api/dbduihua',
       kuaishou: 'https://api.bugpk.com/api/kuaishou',
       xiaohongshu: 'https://api.bugpk.com/api/xhs',
       jimeng: 'https://api.bugpk.com/api/jimengai',
@@ -780,10 +877,12 @@ export function apply(ctx: Context, config: any) {
     let fieldMapping: Record<string, string> | undefined = undefined
     if (custom && custom.apiUrl) {
       apiUrl = custom.apiUrl
-      apiKey = custom.apiKey || ''
+      apiKey = custom.apiKey || getNextApiKey()
       authHeaderType = custom.authHeaderType || 'Bearer'
       customHeaderName = custom.customHeaderName || 'X-API-Key'
       fieldMapping = parseFieldMapping(custom.fieldMapping)
+    } else {
+      apiKey = getNextApiKey()
     }
     const dedicatedFirst = config.platformDedicatedFirst?.[type] ?? false
     if (!fieldMapping) {
@@ -808,19 +907,82 @@ export function apply(ctx: Context, config: any) {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': 'https://www.baidu.com/' },
         validateStatus: (status: number) => status >= 200 && status < 400,
       })
-      const finalUrl = (res.request as any)?.res?.responseUrl || url
+      const finalUrl = (res.request as { res?: { responseUrl?: string } })?.res?.responseUrl || url
       return cleanUrl(finalUrl)
     } catch {
       return cleanUrl(url)
     }
   }
 
-  async function downloadFile(url: string, timeout: number, maxSize: number, tempDir: string, filePrefix: string, fileExts: string[]): Promise<string> {
+  async function downloadFile(url: string, timeout: number, maxSize: number, filePrefix: string, fileExts: string[]): Promise<string> {
     if (!url) throw new Error('链接为空')
-    await fs.mkdir(tempDir, { recursive: true })
-    const ext = fileExts.find(e => url.match(new RegExp('\\.' + e + '(\\?|$)', 'i'))) || fileExts[0]
+    await fs.mkdir(cacheDir, { recursive: true })
+    const extRegexCache: Record<string, RegExp> = {}
+    const ext = fileExts.find(e => {
+      const r = extRegexCache[e] || (extRegexCache[e] = new RegExp('\\.' + e + '(\\?|$)', 'i'))
+      return r.test(url)
+    }) || fileExts[0]
     const fileName = `${filePrefix}_${Date.now()}_${randomBytes(4).toString('hex')}.${ext}`
-    const filePath = path.resolve(tempDir, fileName)
+    const filePath = path.resolve(cacheDir, fileName)
+
+    if (ctx.downloads) {
+      try {
+        const dest = await ctx.downloads.download(url, path.join(cacheDir, fileName), {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+          timeout
+        })
+        const stat = await fs.stat(dest)
+        if (maxSize > 0 && stat.size > maxSize * 1024 * 1024) {
+          await fs.unlink(dest).catch(() => {})
+          throw new Error(`文件过大(${Math.round(stat.size/1024/1024)}MB)，超过限制(${maxSize}MB)`)
+        }
+        return dest
+      } catch (e) {
+        debugLog('ERROR', `downloads 服务下载失败，回退: ${getErrorMessage(e)}`)
+      }
+    }
+
+    if (aria2 && config.resumeDownload) {
+      try {
+        const gid = await aria2.call('aria2.addUri', [url], {
+          dir: cacheDir,
+          out: fileName,
+          split: 4,
+          continue: true,
+          maxConnectionPerServer: 5,
+          timeout: timeout / 1000,
+          maxFileNotFound: 5,
+          maxTries: 5,
+          retryWait: 2,
+          header: [`User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36`, `Referer: https://www.baidu.com/`]
+        })
+        let completed = false
+        const ariaStartTime = Date.now()
+        while (!completed) {
+          if (Date.now() - ariaStartTime > timeout) {
+            await aria2.call('aria2.remove', gid).catch(() => {})
+            throw new Error('aria2下载超时')
+          }
+          const status = await aria2.call('aria2.tellStatus', gid)
+          if (status.status === 'complete') {
+            completed = true
+          } else if (status.status === 'error' || status.status === 'removed') {
+            throw new Error('aria2下载失败')
+          } else {
+            await delay(1000)
+          }
+        }
+        const stat = await fs.stat(filePath)
+        if (maxSize > 0 && stat.size > maxSize * 1024 * 1024) {
+          await fs.unlink(filePath).catch(() => {})
+          throw new Error(`文件过大(${Math.round(stat.size/1024/1024)}MB)，超过限制(${maxSize}MB)`)
+        }
+        return filePath
+      } catch (e) {
+        debugLog('ERROR', `aria2下载失败，回退内置下载: ${getErrorMessage(e)}`)
+      }
+    }
+
     const writer = createWriteStream(filePath)
     let response
     try {
@@ -854,7 +1016,7 @@ export function apply(ctx: Context, config: any) {
     }
   }
 
-  async function sendMedia(session: any, url: string, type: 'image' | 'video' | 'audio', forceDownload: boolean, showFile: boolean, timeout: number, tempDir: string, maxSize: number) {
+  async function sendMedia(session: any, url: string, type: 'image' | 'video' | 'audio', forceDownload: boolean, showFile: boolean) {
     if (!url) return
     await downloadLimiter.acquire()
     try {
@@ -869,7 +1031,7 @@ export function apply(ctx: Context, config: any) {
 
       if (forceDownload) {
         try {
-          const localPath = await downloadFile(url, timeout, maxSize, tempDir, prefixMap[type], extMap[type])
+          const localPath = await downloadFile(url, mediaDownloadTimeout, maxMediaSize, prefixMap[type], extMap[type])
           try {
             await sendWithTimeout(session, sendFunc(`file://${localPath}`))
           } finally {
@@ -892,7 +1054,7 @@ export function apply(ctx: Context, config: any) {
         await sendWithTimeout(session, sendFunc(url))
       } catch {
         try {
-          const localPath = await downloadFile(url, timeout, maxSize, tempDir, prefixMap[type], extMap[type])
+          const localPath = await downloadFile(url, mediaDownloadTimeout, maxMediaSize, prefixMap[type], extMap[type])
           try {
             await sendWithTimeout(session, sendFunc(`file://${localPath}`))
           } finally {
@@ -987,26 +1149,26 @@ export function apply(ctx: Context, config: any) {
         const text = item.text
         if (text && config.showImageText) { await sendWithTimeout(session, text); await delay(300) }
         if (p.cover && config.showCoverImage && p.type !== 'live_photo' && !(p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
-          await sendMedia(session, p.cover, 'image', config.forceDownloadImage, config.showImageFile, config.imageDownloadTimeout, config.imageTempDir, config.maxImageSize).catch(() => {})
+          await sendMedia(session, p.cover, 'image', config.forceDownloadImage, config.showImageFile).catch(() => {})
           await delay(300)
         }
         if (config.showMusicCover && p.music.cover) {
-          await sendMedia(session, p.music.cover, 'image', config.forceDownloadImage, config.showImageFile, config.imageDownloadTimeout, config.imageTempDir, config.maxImageSize).catch(() => {})
+          await sendMedia(session, p.music.cover, 'image', config.forceDownloadImage, config.showImageFile).catch(() => {})
           await delay(300)
         }
         if (p.video && (p.type === 'video' || (p.type === 'live' && !p.live_photo?.length && !p.images?.length))) {
-          await sendMedia(session, p.video, 'video', config.forceDownloadVideo, config.showVideoFile, config.videoDownloadTimeout, config.tempDir, config.maxVideoSize).catch(() => {})
+          await sendMedia(session, p.video, 'video', config.forceDownloadVideo, config.showVideoFile).catch(() => {})
           await delay(500)
         }
         if (p.type === 'image' || p.type === 'live_photo' || (p.type === 'live' && (p.live_photo?.length || p.images?.length))) {
           const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? [])
           for (const imgUrl of imageUrls) {
-            await sendMedia(session, imgUrl, 'image', config.forceDownloadImage, config.showImageFile, config.imageDownloadTimeout, config.imageTempDir, config.maxImageSize).catch(() => {})
+            await sendMedia(session, imgUrl, 'image', config.forceDownloadImage, config.showImageFile).catch(() => {})
             await delay(200)
           }
         }
         if (config.showMusicVoice && p.music.url) {
-          await sendMedia(session, p.music.url, 'audio', config.forceDownloadMusicVoice, config.showMusicVoiceFile, config.musicDownloadTimeout, config.musicTempDir, config.maxMusicSize).catch(() => {})
+          await sendMedia(session, p.music.url, 'audio', config.forceDownloadMusicVoice, config.showMusicVoiceFile).catch(() => {})
           await delay(300)
         }
       }
@@ -1073,6 +1235,9 @@ export function apply(ctx: Context, config: any) {
             const parsed = parseApiResponse(res.data, config.maxDescLength, api.fieldMapping)
             urlCacheLocal.set(cacheKey, { data: parsed, expire: Date.now() + cacheTTL })
             return parsed
+          }
+          if (res.data?.code === 403 || res.data?.code === 401) {
+            if (api.apiKey) markApiKeyInvalid(api.apiKey)
           }
           throw new Error(res.data?.msg || `API返回错误码: ${res.data?.code}`)
         } catch (error) {
@@ -1175,18 +1340,15 @@ export function apply(ctx: Context, config: any) {
 
   const tempCleanupInterval = setInterval(async () => {
     try {
-      const dirs = [config.tempDir || './temp_videos', config.imageTempDir || './temp_images', config.musicTempDir || './temp_music']
-      for (const dir of dirs) {
-        const files = await fs.readdir(dir)
-        const now = Date.now()
-        for (const file of files) {
-          if ((file.startsWith('video_') && file.endsWith('.mp4')) ||
-              (file.startsWith('img_') && file.match(/\.(png|jpg|jpeg|gif|webp)$/i)) ||
-              (file.startsWith('music_') && file.match(/\.(mp3|wav|ogg|flac|aac|m4a)$/i))) {
-            const filePath = path.join(dir, file)
-            const stats = await fs.stat(filePath)
-            if (now - stats.mtimeMs > 3600000) { await fs.unlink(filePath).catch(() => {}) }
-          }
+      const files = await fs.readdir(cacheDir)
+      const now = Date.now()
+      for (const file of files) {
+        if ((file.startsWith('video_') && file.endsWith('.mp4')) ||
+            (file.startsWith('img_') && file.match(/\.(png|jpg|jpeg|gif|webp)$/i)) ||
+            (file.startsWith('music_') && file.match(/\.(mp3|wav|ogg|flac|aac|m4a)$/i))) {
+          const filePath = path.join(cacheDir, file)
+          const stats = await fs.stat(filePath)
+          if (now - stats.mtimeMs > 3600000) { await fs.unlink(filePath).catch(() => {}) }
         }
       }
     } catch (e) { debugLog('WARN', '清理临时文件失败:', e) }
@@ -1194,6 +1356,7 @@ export function apply(ctx: Context, config: any) {
 
   ctx.on('dispose', () => {
     clearInterval(tempCleanupInterval)
+    if (aria2) aria2.close()
     urlCacheLocal.clear()
     dedupCache.clear()
     debugLog('INFO', '插件已卸载')
@@ -1201,15 +1364,12 @@ export function apply(ctx: Context, config: any) {
 
   process.on('beforeExit', async () => {
     try {
-      const dirs = [config.tempDir || './temp_videos', config.imageTempDir || './temp_images', config.musicTempDir || './temp_music']
-      for (const dir of dirs) {
-        const files = await fs.readdir(dir)
-        for (const file of files) {
-          if ((file.startsWith('video_') && file.endsWith('.mp4')) ||
-              (file.startsWith('img_') && file.match(/\.(png|jpg|jpeg|gif|webp)$/i)) ||
-              (file.startsWith('music_') && file.match(/\.(mp3|wav|ogg|flac|aac|m4a)$/i))) {
-            await fs.unlink(path.join(dir, file)).catch(() => {})
-          }
+      const files = await fs.readdir(cacheDir)
+      for (const file of files) {
+        if ((file.startsWith('video_') && file.endsWith('.mp4')) ||
+            (file.startsWith('img_') && file.match(/\.(png|jpg|jpeg|gif|webp)$/i)) ||
+            (file.startsWith('music_') && file.match(/\.(mp3|wav|ogg|flac|aac|m4a)$/i))) {
+          await fs.unlink(path.join(cacheDir, file)).catch(() => {})
         }
       }
     } catch {}
