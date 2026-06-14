@@ -117,7 +117,7 @@ export const Config = Schema.intersect([
 
   Schema.object({
     showMusicVoice: Schema.boolean().default(false).description('音乐链接以语音形式发送'),
-    showMusicVoiceFile: Schema.boolean().default(true).description('音乐语音是否以文件形式发送（关闭则只发送链接）'),
+    showMusicVoiceFile: Schema.boolean().default(true).description('音乐链接是否以语音形式发送（关闭则只发送链接）'),
     forceDownloadMusicVoice: Schema.boolean().default(false).description('强制下载音乐语音'),
   }).description('音乐语音（需 silk 和 ffmpeg）'),
 
@@ -130,6 +130,7 @@ export const Config = Schema.intersect([
     downloadEngine: Schema.union([
       Schema.const('internal').description('内置下载'),
       Schema.const('aria2').description('aria2 下载'),
+      Schema.const('downloads').description('downloads 服务下载'),
     ]).default('internal').description('下载引擎'),
     aria2Host: Schema.string().default('127.0.0.1').description('aria2 RPC 地址'),
     aria2Port: Schema.number().default(6800).description('aria2 RPC 端口'),
@@ -870,10 +871,11 @@ export function apply(ctx: Context, config: any) {
     }
   }
 
+  const extRegexCache: Record<string, RegExp> = {}
+
   async function downloadFile(url: string, timeout: number, maxSize: number, filePrefix: string, fileExts: string[]): Promise<string> {
     if (!url) throw new Error('链接为空')
     await fs.mkdir(cacheDir, { recursive: true })
-    const extRegexCache: Record<string, RegExp> = {}
     const ext = fileExts.find(e => {
       const r = extRegexCache[e] || (extRegexCache[e] = new RegExp('\\.' + e + '(\\?|$)', 'i'))
       return r.test(url)
@@ -881,7 +883,7 @@ export function apply(ctx: Context, config: any) {
     const fileName = `${filePrefix}_${Date.now()}_${randomBytes(4).toString('hex')}.${ext}`
     const filePath = path.resolve(cacheDir, fileName)
 
-    if (ctx.downloads) {
+    if (downloadEngine === 'downloads' && ctx.downloads) {
       try {
         const dest = await ctx.downloads.download(url, path.join(cacheDir, fileName), {
           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
@@ -894,11 +896,9 @@ export function apply(ctx: Context, config: any) {
         }
         return dest
       } catch (e) {
-        debugLog('ERROR', `downloads 服务下载失败，回退: ${getErrorMessage(e)}`)
+        debugLog('ERROR', `downloads 服务下载失败，回退内置下载: ${getErrorMessage(e)}`)
       }
-    }
-
-    if (aria2 && config.resumeDownload) {
+    } else if (downloadEngine === 'aria2' && aria2 && config.resumeDownload) {
       try {
         const gid = await aria2.call('aria2.addUri', [url], {
           dir: cacheDir,
