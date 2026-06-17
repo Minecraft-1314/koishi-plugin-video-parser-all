@@ -49,7 +49,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `showMusicVoice` | boolean | false | 音乐链接以语音发送 |
-| `showMusicVoiceFile` | boolean | true | 音乐语音是否以文件形式发送（关闭则只发送链接） |
+| `showMusicVoiceFile` | boolean | true | 音乐链接是否以语音形式发送（关闭则只发送链接） |
 | `forceDownloadMusicVoice` | boolean | false | 强制下载音乐语音 |
 
 ### 性能与限制
@@ -60,7 +60,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | `downloadConcurrency` | number | 3 | 下载线程数 |
 | `mediaDownloadTimeout` | number | 120000 | 统一下载超时 (ms) |
 | `maxMediaSize` | number | 0 | 最大下载文件大小 (MB)，0 为不限制 |
-| `downloadEngine` | string | internal | 下载引擎（internal / aria2） |
+| `downloadEngine` | string | internal | 下载引擎（internal / aria2 / downloads） |
 | `aria2Host` | string | 127.0.0.1 | aria2 RPC 地址 |
 | `aria2Port` | number | 6800 | aria2 RPC 端口 |
 | `aria2Secret` | string |  | aria2 RPC 密钥 |
@@ -93,8 +93,6 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 ### API 与平台
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `apiKeys` | array | [] | 多 API 密钥列表 |
-| `rotationMode` | string | sequential | 密钥轮换模式（sequential / load_balance） |
 | `platformDedicatedFirst` | object | 全关 | 优先专属 API |
 | `customApis` | array | [] | 覆盖内置平台 API |
 | `customPlatforms` | array | [] | 自定义新平台 |
@@ -142,7 +140,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 - 启动 RPC：`aria2c --enable-rpc --rpc-listen-all=true --rpc-allow-origin-all`
 未满足条件时自动降级为内置下载，不影响正常使用。
 ### downloads 服务（可选）
-插件会自动检测 Koishi 内置 `downloads` 服务，优先使用其下载文件，失败时回退到内置/aria2 下载。
+若启用 `downloadEngine: 'downloads'`，请安装可选依赖 `koishi-plugin-downloads`，失败时回退到内置下载。
 
 ## 支持的平台 (Supported Platforms)
 | 平台名称 | 关键词识别 | 解析能力 |

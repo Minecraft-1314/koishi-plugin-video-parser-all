@@ -856,21 +856,6 @@ export function apply(ctx: Context, config: any) {
     return {}
   }
 
-  async function resolveShortUrl(url: string): Promise<string> {
-    try {
-      const res = await http.get(url, {
-        timeout: 10000,
-        maxRedirects: 10,
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': 'https://www.baidu.com/' },
-        validateStatus: (status: number) => status >= 200 && status < 400,
-      })
-      const finalUrl = (res.request as { res?: { responseUrl?: string } })?.res?.responseUrl || url
-      return cleanUrl(finalUrl)
-    } catch {
-      return cleanUrl(url)
-    }
-  }
-
   const extRegexCache: Record<string, RegExp> = {}
 
   async function downloadFile(url: string, timeout: number, maxSize: number, filePrefix: string, fileExts: string[]): Promise<string> {
@@ -1196,7 +1181,16 @@ export function apply(ctx: Context, config: any) {
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error))
           debugLog('ERROR', `${api.label} attempt ${attempt+1} failed: ${lastError.message}`)
-          if (attempt < config.retryTimes) await delay(config.retryInterval)
+          if (axios.isAxiosError(error)) {
+            if (!error.response) {
+              if (attempt < config.retryTimes) { await delay(config.retryInterval); continue }
+            }
+            const status = error.response?.status
+            if (status && (status >= 500 || status === 429)) {
+              if (attempt < config.retryTimes) { await delay(config.retryInterval); continue }
+            }
+          }
+          break
         }
       }
       debugLog('WARN', `${api.label} all retries failed`)
@@ -1205,16 +1199,14 @@ export function apply(ctx: Context, config: any) {
   }
 
   async function parseUrl(url: string, type: string, fieldMapping?: Record<string, string>, platformConf?: any): Promise<{ success: true; data: ParsedData } | { success: false; msg: string }> {
-    const realUrl = await resolveShortUrl(url)
-    const candidates = [...new Set([realUrl, url])]
-    for (const candidate of candidates) {
-      try {
-        const info = await fetchApi(candidate, type, fieldMapping, platformConf)
-        if (info.video || info.images.length > 0 || info.live_photo.length > 0) return { success: true, data: info }
-        debugLog('WARN', `解析成功但无内容: ${candidate}`)
-      } catch (error) {
-        debugLog('ERROR', `候选链接失败: ${candidate}`, getErrorMessage(error))
-      }
+    const cleanedUrl = cleanUrl(url)
+    try {
+      const info = await fetchApi(cleanedUrl, type, fieldMapping, platformConf)
+      if (info.video || info.images.length > 0 || info.live_photo.length > 0) return { success: true, data: info }
+      debugLog('WARN', `解析成功但无内容: ${cleanedUrl}`)
+    } catch (error) {
+      debugLog('ERROR', `解析失败: ${cleanedUrl}`, getErrorMessage(error))
+      return { success: false, msg: getErrorMessage(error) }
     }
     return { success: false, msg: texts.unsupportedPlatformText }
   }
@@ -1305,7 +1297,9 @@ export function apply(ctx: Context, config: any) {
           if (now - stats.mtimeMs > 3600000) { await fs.unlink(filePath).catch(() => {}) }
         }
       }
-    } catch (e) { debugLog('WARN', '清理临时文件失败:', e) }
+    } catch (e) {
+      if ((e as any)?.code !== 'ENOENT') debugLog('WARN', '清理临时文件失败:', e)
+    }
   }, 3600000)
 
   ctx.on('dispose', () => {
@@ -1326,7 +1320,9 @@ export function apply(ctx: Context, config: any) {
           await fs.unlink(path.join(cacheDir, file)).catch(() => {})
         }
       }
-    } catch {}
+    } catch (e) {
+      if ((e as any)?.code !== 'ENOENT') debugLog('WARN', '退出清理临时文件失败:', e)
+    }
   })
 
   debugLog('INFO', '插件初始化完成')
