@@ -89,6 +89,7 @@ export const Config = Schema.intersect([
       twitter: Schema.boolean().default(true).description('Twitter/X'),
       instagram: Schema.boolean().default(true).description('Instagram'),
       doubao: Schema.boolean().default(true).description('豆包'),
+      doubao_image: Schema.boolean().default(true).description('豆包图片'),
       oasis: Schema.boolean().default(true).description('绿洲'),
       wechat_channel: Schema.boolean().default(true).description('视频号'),
       lishi: Schema.boolean().default(true).description('梨视频'),
@@ -197,6 +198,7 @@ export const Config = Schema.intersect([
       twitter: Schema.boolean().default(false).description('Twitter/X'),
       instagram: Schema.boolean().default(false).description('Instagram'),
       doubao: Schema.boolean().default(false).description('豆包'),
+      doubao_image: Schema.boolean().default(false).description('豆包图片'),
       oasis: Schema.boolean().default(false).description('绿洲'),
       wechat_channel: Schema.boolean().default(false).description('视频号'),
       lishi: Schema.boolean().default(false).description('梨视频'),
@@ -391,6 +393,8 @@ const BUILTIN_LINK_RULES: { pattern: RegExp; type: string }[] = [
   { pattern: /https?:\/\/x\.com\/\w+\/status\/\d{10,}[^\s]*/gi, type: 'twitter' },
   { pattern: /https?:\/\/(?:www\.)?instagram\.com\/p\/[0-9a-zA-Z_-]{10,}[^\s]*/gi, type: 'instagram' },
   { pattern: /https?:\/\/(?:www\.)?doubao\.com\/video\/\d{10,}[^\s]*/gi, type: 'doubao' },
+  { pattern: /https?:\/\/(?:www\.)?doubao\.com\/video-sharing\?[^\s]*/gi, type: 'doubao' },
+  { pattern: /https?:\/\/(?:www\.)?doubao\.com\/thread\/[^\s]+/gi, type: 'doubao_image' },
   { pattern: /https?:\/\/(?:www\.)?oasis\.weibo\.com\/v\/[0-9a-zA-Z_-]+[^\s]*/gi, type: 'oasis' },
   { pattern: /https?:\/\/channels\.weixin\.qq\.com\/[0-9a-zA-Z_-]+[^\s]*/gi, type: 'wechat_channel' },
   { pattern: /https?:\/\/weixin\.qq\.com\/sph\/[0-9a-zA-Z_-]+[^\s]*/gi, type: 'wechat_channel' },
@@ -750,6 +754,12 @@ export function apply(ctx: Context, config: any) {
   const dedupCache = new SimpleLRUCache<number>(1000, config.deduplicationInterval * 1000)
   const cacheTTL = (config.cacheTTL || 600) * 1000
   const urlCacheLocal = new SimpleLRUCache<{ data: ParsedData; expire: number }>(500, cacheTTL)
+  const contentDedupCache = new SimpleLRUCache<number>(1000, config.deduplicationInterval * 1000)
+
+  function contentFingerprint(p: ParsedData): string {
+    const imgSig = p.images?.length ? p.images.slice(0, 3).join('|') : (p.live_photo?.slice(0, 3).map(lp => lp.image).join('|') || '')
+    return [p.type, p.title, p.author, p.uid, p.video, imgSig].map(v => String(v ?? '')).join('::')
+  }
 
   const texts = {
     waitingTipText: config.waitingTipText || '正在解析视频，请稍候...',
@@ -816,6 +826,7 @@ export function apply(ctx: Context, config: any) {
       bilibili: 'https://api.bugpk.com/api/bilibili',
       douyin: 'https://api.bugpk.com/api/douyin',
       doubao: 'https://api.bugpk.com/api/dbvideos',
+      doubao_image: 'https://api.bugpk.com/api/dbduihua',
       kuaishou: 'https://api.bugpk.com/api/kuaishou',
       xiaohongshu: 'https://api.bugpk.com/api/xhs',
       jimeng: 'https://api.bugpk.com/api/jimengai',
@@ -1035,8 +1046,17 @@ export function apply(ctx: Context, config: any) {
         const fieldMapping = platformConf.fieldMapping
         const result = await processSingleUrl(match.url, match.type, fieldMapping, platformConf)
         if (result.success) {
+          if (config.deduplicationInterval > 0) {
+            const fp = contentFingerprint(result.data.parsed)
+            const lastDedup = contentDedupCache.get(fp)
+            if (lastDedup && (Date.now() - lastDedup < config.deduplicationInterval * 1000)) {
+              debugLog('INFO', `跳过重复内容: ${match.url}`)
+              return
+            }
+            contentDedupCache.set(fp, Date.now())
+            dedupCache.set(match.url, Date.now())
+          }
           items.push(result.data)
-          if (config.deduplicationInterval > 0) dedupCache.set(match.url, Date.now())
         } else {
           const item = texts.parseErrorItemFormat.replace(/\$\{url\}/g, match.url.length > 50 ? match.url.slice(0,50)+'...' : match.url).replace(/\$\{msg\}/g, result.msg)
           errors.push(item)
