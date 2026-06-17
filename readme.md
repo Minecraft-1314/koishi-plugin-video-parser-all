@@ -179,7 +179,7 @@ This is a **multi-platform video/image parsing plugin** developed for the Koishi
 | Minecraft-1314 | 插件完整开发 (Complete plugin development) |
 | ShiraiKuroko003 | 修复消息格式设置问题并且PR-1.2.5版本已修复 |
 | cyavb | 提交功能建议-给自定义API添加KEY认证-已修复 |
-| Keep785 | 提交Bug-无法正常关闭发送封面-已修复 |
+| Keep785 | 提交Bug-无法正常关闭发送封面-已修复<br>提交Bug-解析问题-已修复 |
 | dzt2008 + Apricityx | 提交Bug-会对非支持视频平台URL进行误解析-已修复 |
 | JH-Ahua | BugPk-Api 支持 |
 | shangxue | 灵感来源 |
