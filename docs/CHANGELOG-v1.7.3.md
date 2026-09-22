@@ -1,4 +1,4 @@
-# koishi-plugin-video-parser-all v1.7.2
+# koishi-plugin-video-parser-all v1.7.3
 
 ## 更新日志
 

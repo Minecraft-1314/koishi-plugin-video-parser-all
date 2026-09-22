@@ -1,6 +1,6 @@
 # koishi-plugin-video-parser-all
 
-> Default language: [中文版](README.zh.md)
+> Default language: [中文版](README.md)
 
 ## Important Announcements
 
@@ -13,7 +13,7 @@ Please read first:
 
 | Document | Description |
 |------|------|
-| [CHANGELOG-v1.7.2.md](docs/CHANGELOG-v1.7.2.md) | v1.7.2 changelog |
+| [CHANGELOG-v1.7.3.md](docs/CHANGELOG-v1.7.3.md) | v1.7.3 changelog |
 | [API_ADDRESSES.md](docs/API_ADDRESSES.md) | API parsing addresses for the main gateway and platform-specific endpoints |
 | [COMPATIBILITY.md](docs/COMPATIBILITY.md) | API field compatibility notes, including all supported field aliases |
 | [LINK_RULES.md](docs/LINK_RULES.md) | Link matching rules for all supported platforms (regex) |
