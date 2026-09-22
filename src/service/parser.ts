@@ -5,7 +5,7 @@ import type { LinkMatch, ParsedData } from '../types'
 import { fetchApi } from './api'
 
 export async function processSingleUrl(
-  http: ReturnType<typeof import('axios').default.create>,
+  http: import('axios').AxiosInstance,
   config: {
     maxDescLength: number
     unifiedMessageFormat: string

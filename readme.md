@@ -10,7 +10,7 @@
 
 | 文档 | 说明 |
 |------|------|
-| [CHANGELOG-v1.6.8.md](docs/CHANGELOG-v1.6.8.md) | v1.6.8 版本更新日志 |
+| [CHANGELOG-v1.6.9.md](docs/CHANGELOG-v1.6.9.md) | v1.6.9 版本更新日志 |
 | [API_ADDRESSES.md](docs/API_ADDRESSES.md) | 插件 API 解析地址一览（主 API 与各平台专属接口） |
 | [COMPATIBILITY.md](docs/COMPATIBILITY.md) | API 字段兼容性说明（支持的所有字段别名） |
 | [LINK_RULES.md](docs/LINK_RULES.md) | 所有平台的链接匹配规则（正则表达式） |
@@ -26,6 +26,34 @@ This is a **cross-platform video/image parsing plugin** developed for the Koishi
 ## 项目仓库 (Repository)
 - GitHub: `https://github.com/Minecraft-1314/koishi-plugin-video-parser-all`
 - Issues: `https://github.com/Minecraft-1314/koishi-plugin-video-parser-all/issues`
+
+## 源码架构 (Source Architecture)
+
+```
+src/
+├── index.ts           # 插件入口：事件监听、消息处理、去重逻辑、发送控制
+├── config.ts          # 配置 schema 定义（Schema.intersect）
+├── types.ts           # TypeScript 类型声明
+├── utils.ts           # 通用工具函数（LRU 缓存、并发限制、URL 规范化等）
+├── logger.ts          # 日志与 Debug 开关
+├── link-rules.ts      # 平台链接匹配规则（内置 + 自定义平台 + 全平台链接去重）
+├── format.ts          # 文本格式化输出
+├── parser.ts          # API 响应解析（字段映射、类型判断、数据提取）
+├── dedupe.ts          # 消息级幂等与并发锁管理器
+└── service/
+    ├── api.ts         # API 请求模块：多 API 优先级轮询、缓存、重试
+    └── parser.ts      # 解析入口：串联 API 请求与格式化输出
+```
+
+### 核心去重与降级机制
+
+插件实现四层去重保护 + 发送降级通知，确保同一消息只解析一次、只发送一次结果，发送失败时用户有感知：
+
+1. **链接去重（全平台）** — 每个平台的宽泛 catch-all 正则会与特定规则重复匹配同一 URL。`dedupeKey()` 对所有主要平台提取内容唯一标识（BV/AV 号、视频 ID、item ID 等）统一去重，无法提取 ID 的平台通过去除查询参数去重。
+2. **消息级幂等锁** — 同一 `messageId` 的重复事件通过 `processingMessages` Set + `DeduplicationManager` 锁机制直接跳过。
+3. **发送去重** — `sendWithTimeout` 通过 `pendingSends` Map 对同一 `messageId::content` 复用发送 Promise，避免并发重试导致重复消息。
+4. **内容指纹去重** — 解析结果通过内容指纹（标题+作者+视频URL+图片摘要）缓存，在 `deduplicationInterval` 时间内跳过相同内容。
+5. **发送降级通知** — 所有发送操作失败时通过 `sendSafe()` 向用户推送「发送失败」通知，合并转发失败自动降级为逐条发送。
 
 ## 核心指令 (Core Commands)
 

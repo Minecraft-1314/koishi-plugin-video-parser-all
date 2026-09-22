@@ -46,6 +46,19 @@ export function apply(ctx: Context, config: any) {
     return config[key] || defaults[key] || ''
   }
 
+  async function sendSafe(session: any, content: any, contextLabel: string): Promise<boolean> {
+    try {
+      await sendWithTimeout(session, content)
+      return true
+    } catch (err) {
+      debugLog('ERROR', `发送失败 [${contextLabel}]: ${getErrorMessage(err)}`)
+      try {
+        await sendWithTimeout(session, `发送失败：${contextLabel}`)
+      } catch {}
+      return false
+    }
+  }
+
   const proxyConfig = config.proxy || {}
   const customPlatforms: CustomPlatformConfig[] = (config.customPlatforms || []).map((p: any) => ({
     name: p.name,
@@ -160,13 +173,13 @@ export function apply(ctx: Context, config: any) {
   async function sendMedia(session: any, url: string, type: 'image' | 'video' | 'audio', showFile: boolean) {
     if (!url) return
     if (!showFile) {
-      await sendWithTimeout(session, `${type === 'audio' ? '音乐' : type === 'video' ? '视频' : '图片'}链接：${url}`).catch(() => {})
+      await sendSafe(session, `${type === 'audio' ? '音乐' : type === 'video' ? '视频' : '图片'}链接：${url}`, `${type}链接`)
       return
     }
     try {
       await sendWithTimeout(session, type === 'audio' ? h.audio(url) : type === 'video' ? h.video(url) : h.image(url))
     } catch {
-      await sendWithTimeout(session, `${type === 'audio' ? '音乐' : type === 'video' ? '视频' : '图片'}链接：${url}`).catch(() => {})
+      await sendSafe(session, `${type === 'audio' ? '音乐' : type === 'video' ? '视频' : '图片'}链接：${url}`, `${type}降级`)
     }
   }
 
@@ -197,7 +210,7 @@ export function apply(ctx: Context, config: any) {
             const tip = getText('deduplicationTipText')
               .replace(/\$\{url\}/g, shortUrl)
               .replace(/\$\{interval\}/g, String(config.deduplicationInterval))
-            await sendWithTimeout(session, tip).catch(() => {})
+            await sendSafe(session, tip, getText('deduplicationTipText'))
             return
           }
         }
@@ -239,7 +252,7 @@ export function apply(ctx: Context, config: any) {
     const orderedErrors = errors.map(e => e.item)
 
     if (orderedErrors.length) {
-      await sendWithTimeout(session, `${getText('parseErrorPrefix')}\n${orderedErrors.join('\n')}`).catch(() => {})
+      await sendSafe(session, `${getText('parseErrorPrefix')}\n${orderedErrors.join('\n')}`, '解析错误')
     }
     if (!orderedItems.length) return
 
@@ -332,11 +345,11 @@ export function apply(ctx: Context, config: any) {
             const content = (node as any).__vpContent ?? node.data?.content ?? node.children
             if (Array.isArray(content)) {
               for (const c of content) {
-                await sendWithTimeout(session, c).catch(() => {})
+                await sendSafe(session, c, '合并转发降级')
                 await delay(200)
               }
             } else {
-              await sendWithTimeout(session, content).catch(() => {})
+              await sendSafe(session, content, '合并转发降级')
             }
             await delay(300)
           }
@@ -352,41 +365,41 @@ export function apply(ctx: Context, config: any) {
           text = text ? text + '\n' + (config.authorAvatarText || '作者头像：') : (config.authorAvatarText || '作者头像：')
         }
         if (text && config.showImageText) {
-          await sendWithTimeout(session, text).catch(() => {})
+          await sendSafe(session, text, '文字内容')
           await delay(300)
         }
         if (config.showAuthorAvatar && p.avatar) {
-          await sendMedia(session, p.avatar, 'image', config.showAuthorAvatarFile).catch(() => {})
+          await sendMedia(session, p.avatar, 'image', config.showAuthorAvatarFile)
           await delay(300)
         }
         if (p.cover && config.showCoverImage && p.type !== 'live_photo' && p.type !== 'image') {
-          if (config.showCoverText) await sendWithTimeout(session, config.coverText || '封面：').catch(() => {})
-          await sendMedia(session, p.cover, 'image', config.showCoverFile).catch(() => {})
+          if (config.showCoverText) await sendSafe(session, config.coverText || '封面：', '封面文字')
+          await sendMedia(session, p.cover, 'image', config.showCoverFile)
           await delay(300)
         }
         if (config.showMusicCover && p.music.cover) {
-          await sendMedia(session, p.music.cover, 'image', true).catch(() => {})
+          await sendMedia(session, p.music.cover, 'image', true)
           await delay(300)
         }
         if (p.type === 'live_photo' && p.live_photo?.length) {
           for (const lp of p.live_photo) {
-            await sendMedia(session, lp.image, 'image', config.showImageFileNew).catch(() => {})
+            await sendMedia(session, lp.image, 'image', config.showImageFileNew)
             await delay(500)
           }
         } else if (p.type === 'image') {
           const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? [])
           for (let j = 0; j < imageUrls.length; j++) {
             debugLog('INFO', `[发送] 图片 ${j + 1}/${imageUrls.length}`)
-            await sendMedia(session, imageUrls[j], 'image', config.showImageFileNew).catch(() => {})
+            await sendMedia(session, imageUrls[j], 'image', config.showImageFileNew)
             await delay(1000)
           }
         }
         if (p.video && p.type !== 'live_photo') {
-          await sendMedia(session, p.video, 'video', config.showVideoFile).catch(() => {})
+          await sendMedia(session, p.video, 'video', config.showVideoFile)
           await delay(300)
         }
         if (config.showMusicVoice && p.music.url) {
-          await sendMedia(session, p.music.url, 'audio', config.showMusicVoiceFile).catch(() => {})
+          await sendMedia(session, p.music.url, 'audio', config.showMusicVoiceFile)
           await delay(300)
         }
       }
@@ -487,3 +500,4 @@ export function apply(ctx: Context, config: any) {
 
   debugLog('INFO', '插件初始化完成')
 }
+
