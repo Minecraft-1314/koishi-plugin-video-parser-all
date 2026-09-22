@@ -10,7 +10,7 @@
 
 | 文档 | 说明 |
 |------|------|
-| [CHANGELOG-v1.6.7.md](docs/CHANGELOG-v1.6.7.md) | v1.6.7 版本更新日志 |
+| [CHANGELOG-v1.6.8.md](docs/CHANGELOG-v1.6.8.md) | v1.6.8 版本更新日志 |
 | [API_ADDRESSES.md](docs/API_ADDRESSES.md) | 插件 API 解析地址一览（主 API 与各平台专属接口） |
 | [COMPATIBILITY.md](docs/COMPATIBILITY.md) | API 字段兼容性说明（支持的所有字段别名） |
 | [LINK_RULES.md](docs/LINK_RULES.md) | 所有平台的链接匹配规则（正则表达式） |
@@ -47,7 +47,7 @@ This is a **cross-platform video/image parsing plugin** developed for the Koishi
 ### 消息格式 (Message Format)
 | 配置项 (Config) | 类型 (Type) | 默认值 (Default) | 说明 (Description) |
 |----------------|-------------|-------------------|---------------------|
-| `unifiedMessageFormat` | string | 见预设 (See preset) | 文字格式，支持变量：${标题} ${作者} ${简介} ${视频时长} ${点赞数} ${收藏数} ${转发数} ${播放数} ${评论数} ${发布时间} ${图片数量} ${作者ID} ${音乐标题} ${音乐作者}，空行自动隐藏 (Text format, supports variables: ${标题} ${作者} ${简介} ${视频时长} ${点赞数} ${收藏数} ${转发数} ${播放数} ${评论数} ${发布时间} ${图片数量} ${作者ID} ${音乐标题} ${音乐作者}, auto-hide empty lines) |
+| `unifiedMessageFormat` | string | 见预设 (See preset) | 文字格式，支持变量：${标题} ${作者} ${简介} ${视频时长} ${点赞数} ${收藏数} ${转发数} ${播放数} ${评论数} ${发布时间} ${图片数量} ${作者ID} ${音乐标题} ${音乐作者}，空行自动隐藏 |
 
 ### 媒体发送 (Media Sending)
 | 配置项 (Config) | 类型 (Type) | 默认值 (Default) | 说明 (Description) |
@@ -114,17 +114,16 @@ This is a **cross-platform video/image parsing plugin** developed for the Koishi
 ### 界面文本 (UI Text)
 | 配置项 (Config) | 类型 (Type) | 默认值 (Default) | 说明 (Description) |
 |----------------|-------------|-------------------|---------------------|
-| `waitingTipText` | string | 正在解析... | 等待提示 (Waiting tip) |
-| `unsupportedPlatformText` | string | 不支持该平台 | 不支持提示 (Unsupported platform tip) |
-| `invalidLinkText` | string | 无效链接 | 无效链接提示 (Invalid link tip) |
+| `waitingTipText` | string | 正在解析视频，请稍候... | 等待提示 (Waiting tip) |
+| `unsupportedPlatformText` | string | 不支持该平台链接 | 不支持提示 (Unsupported platform tip) |
+| `invalidLinkText` | string | 无效的视频链接 | 无效链接提示 (Invalid link tip) |
 | `parseErrorPrefix` | string | ❌ 解析失败： | 错误前缀 (Error prefix) |
-| `parseErrorItemFormat` | string | ... | 错误格式 (Error format) |
+| `parseErrorItemFormat` | string | 【${url}】: ${msg} | 错误格式 (Error format) |
 | `deduplicationTipText` | string | 链接 ${url} 在最近 ${interval} 秒内已解析过，已跳过。 | 重复解析提示 (Duplication tip) |
 
 ## 支持的变量 (Supported Variables)
 
-> 在 `unifiedMessageFormat` 中可使用以下变量，空行自动隐藏。  
-> The following variables can be used in `unifiedMessageFormat`, empty lines are auto-hidden.
+> 在 `unifiedMessageFormat` 中可使用以下变量，空行自动隐藏。
 
 | 变量 (Variable) | 说明 (Description) |
 |----------------|--------------------|
@@ -145,12 +144,11 @@ This is a **cross-platform video/image parsing plugin** developed for the Koishi
 
 ## 支持的平台 (Supported Platforms)
 
-> 以下为插件内置链接匹配规则，可根据用户发送的链接自动识别。所有匹配规则同时支持 HTTP 和 HTTPS 协议，并兼容多级路径（如短链后带 `/` 子路径）。  
-> The following are the built-in link matching rules, which can automatically identify links sent by users. All rules support both HTTP and HTTPS, and are compatible with multi-level paths (e.g., short links followed by `/` subpaths).
+> 以下为插件内置链接匹配规则，可根据用户发送的链接自动识别。所有匹配规则同时支持 HTTP 和 HTTPS 协议，并兼容多级路径（如短链后带 `/` 子路径）。
 
 | 平台名称 (Platform) | 关键词识别（匹配的域名/路径模式）(Keyword/Domain Patterns) | 解析能力 (Supported Content) |
 |---------------------|--------------------------------------------------------------|------------------------------|
-| 哔哩哔哩 (B站) Bilibili | `bilibili.com/video/`, `b23.tv`, `bili*.cn`, `b23.wtf`, `bili2233.cn` | 视频 (Video) |
+| 哔哩哔哩 (B站) Bilibili | `bilibili.com/video/`, `b23.tv`, `bili*.cn`, `b23.wtf`, `b2233.cn` | 视频 (Video) |
 | 抖音 Douyin | `douyin.com/video/`, `v.douyin.com` | 短视频、图集、实况 (Short video, Image, Live photo) |
 | 快手 Kuaishou | `kuaishou.com/short-video/`, `v.kuaishou.com`, `kuaishou.com/f/` | 短视频、图集 (Short video, Image) |
 | 小红书 Xiaohongshu | `xiaohongshu.com/discovery/item/`, `xhslink.com`, `xiaohongshu.com/explore/`, `xiaohongshu.com/board/` | 图文、视频 (Image, Video) |
@@ -176,7 +174,7 @@ This is a **cross-platform video/image parsing plugin** developed for the Koishi
 | 皮皮搞笑 Pipigx | `h5.pipigx.com/pp/post/`, `ippzone.com` | 短视频 (Short video) |
 | 皮皮虾 Pipixia | `pipix.com`, `pipixia.com` | 短视频 (Short video) |
 | 最右 Zuiyou | `share.xiaochuankeji.cn/hybrid/share/post`, `izuiyou.com` | 短视频 (Short video) |
-| 🔧 自定义平台 Custom | 通过 `customPlatforms` 配置添加 (Add via `customPlatforms`) | 取决于提供的 API (Depends on API) |
+| 自定义平台 Custom | 通过 `customPlatforms` 配置添加 | 取决于提供的 API (Depends on API) |
 
 ## 项目贡献者 (Contributors)
 
@@ -185,21 +183,19 @@ This is a **cross-platform video/image parsing plugin** developed for the Koishi
 | Minecraft-1314 | 插件完整开发 (Complete plugin development) |
 | ShiraiKuroko003 | 修复消息格式设置问题并且PR-1.2.5版本已修复 (Fixed message format issue, PR-1.2.5) |
 | cyavb | 提交功能建议-给自定义API添加KEY认证-已采纳 (Suggested custom API key auth - adopted) |
-| Keep785 | 提交Bug-无法正常关闭发送封面-已修复<br>提交Bug-解析问题-已修复 (Reported bug - cannot disable cover sending - fixed<br>Reported bug - parsing issue - fixed) |
-| dzt2008 + Apricityx | 提交Bug-会对非支持视频平台URL进行误解析-已修复 (Reported incorrect parsing of unsupported URLs - fixed) |
-| linyves | 提交Bug-小红书图集重复发送封面-已修复<br>提交Bug-话题显示异常 #**[话题]#-已修复<br>提交建议-Live Photo 全部按普通图片处理-已采纳<br>提交Bug-解析后会把作者头像一起发送-已修复 (Reported bug - duplicate cover for Xiaohongshu image posts - fixed<br>Reported bug - abnormal topic display #**[topic]# - fixed<br>Suggestion - treat Live Photos as normal images - adopted<br>Reported bug - author avatar sent together after parsing - fixed) |
-| JH-Ahua |  API 支持 (API support) |
+| Keep785 | 提交Bug-无法正常关闭发送封面-已修复<br>提交Bug-解析问题-已修复 |
+| dzt2008 + Apricityx | 提交Bug-会对非支持视频平台URL进行误解析-已修复 |
+| linyves | 提交Bug-小红书图集重复发送封面-已修复<br>提交Bug-话题显示异常-已修复<br>提交建议-Live Photo 全部按普通图片处理-已采纳<br>提交Bug-解析后会把作者头像一起发送-已修复 |
+| GSRealms | 提交Bug-视频重复解析-已修复 |
+| JH-Ahua | API 支持 (API support) |
 | shangxue | 灵感来源 (Inspiration) |
 
-（欢迎通过 Issues 或 PR 加入贡献者列表）  
-(Welcome to join the contributor list via Issues or PR)
+（欢迎通过 Issues 或 PR 加入贡献者列表）
 
 ## 许可协议 (License)
 
-本项目采用 MIT 许可证，详情参见 [LICENSE](LICENSE) 文件。  
-This project is licensed under the MIT License, see the [LICENSE](LICENSE) file for details.
+本项目采用 MIT 许可证，详情参见 [LICENSE](LICENSE) 文件。
 
 ## 支持我们 (Support Us)
 
-如果这个项目对您有帮助，欢迎点亮右上角的 Star ⭐ 支持我们！  
-If this project is helpful to you, please feel free to star it in the upper right corner ⭐ to support us!
+如果这个项目对您有帮助，欢迎点亮右上角的 Star 支持我们！
