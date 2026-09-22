@@ -153,6 +153,10 @@ export function apply(ctx: Context, config: any) {
           return
         } catch (err) {
           const errMsg = getErrorMessage(err)
+          if (errMsg === '发送超时') {
+            debugLog('WARN', `发送超时（消息可能仍在发送中）: ${errMsg}`)
+            return
+          }
           debugLog('ERROR', `发送失败尝试 ${attempt + 1}: ${errMsg}`)
           if (attempt < maxRetries) await delay(retryDelay)
           else if (!config.ignoreSendError) throw err
@@ -361,14 +365,12 @@ export function apply(ctx: Context, config: any) {
         const p = item.parsed
         const textWithIndex = totalItems > 1 ? `【${i + 1}/${totalItems}】\n${item.text}` : item.text
         let text = textWithIndex
-        if (config.showAuthorAvatar && p.avatar && config.showAuthorAvatarText) {
-          text = text ? text + '\n' + (config.authorAvatarText || '作者头像：') : (config.authorAvatarText || '作者头像：')
-        }
         if (text && config.showImageText) {
           await sendSafe(session, text, '文字内容')
           await delay(300)
         }
         if (config.showAuthorAvatar && p.avatar) {
+          if (config.showAuthorAvatarText) await sendSafe(session, config.authorAvatarText || '作者头像：', '作者头像文字')
           await sendMedia(session, p.avatar, 'image', config.showAuthorAvatarFile)
           await delay(300)
         }
@@ -414,9 +416,9 @@ export function apply(ctx: Context, config: any) {
     headers: {
       'User-Agent': config.userAgent,
       'Referer': 'https://www.baidu.com/',
-      'Content-Type': 'application/x-www-form-urlencoded',
-      ...(config.apiKey ? { 'X-API-Key': config.apiKey } : {})
-    }
+        'Content-Type': 'application/x-www-form-urlencoded',
+        ...(config.apiKey && config.authMode !== 'query' ? { 'X-API-Key': config.apiKey } : {})
+      }
   }
   if (proxyConfig.enabled && proxyConfig.host) {
     axiosConfig.proxy = {

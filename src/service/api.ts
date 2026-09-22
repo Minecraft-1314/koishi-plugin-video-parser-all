@@ -9,6 +9,7 @@ export async function fetchApi(
   config: {
     maxDescLength: number
     apiKey?: string
+    authMode?: string
     timeout?: number
     userAgent?: string
     retryTimes?: number
@@ -70,14 +71,18 @@ export async function fetchApi(
         for (const h of customHeaders) {
           if (h.name && h.value) headers[h.name] = h.value
         }
-        if (api.apiKey) {
+        if (api.apiKey && config.authMode !== 'query') {
           if (api.authHeaderType === 'Bearer') headers['Authorization'] = `Bearer ${api.apiKey}`
           else if (api.authHeaderType === 'Custom' && api.customHeaderName) headers[api.customHeaderName] = api.apiKey
           else headers['X-API-Key'] = api.apiKey
         }
         const proxyToUse = customProxy && customProxy.enabled ? customProxy : undefined
+        const params: Record<string, string> = { url }
+        if (config.authMode === 'query' && api.apiKey) {
+          params.key = api.apiKey
+        }
         const axiosConfig: AxiosRequestConfig = {
-          params: { url },
+          params,
           timeout: config.timeout,
           headers,
           proxy: proxyToUse && proxyToUse.host ? {

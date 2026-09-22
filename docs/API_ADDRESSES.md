@@ -2,15 +2,33 @@
 
 本插件所有解析请求默认发送至 ifphp（BugPk）提供的解析服务，请求域名固定为 `https://api-new.ifphp.com`，并需在插件配置中填写 `apiKey`。
 
+## 认证方式 (Authentication)
+
+同一接口支持两种等价的 Key 传递方式，在插件配置中通过 `authMode` 选择：
+
+### Header 模式（默认，`authMode: "header"`）
+
+推荐服务端调用使用，请求地址更干净，也不容易在日志或分享链接中暴露 Key。
+
+```
+X-API-Key: <apiKey>
+```
+
+可通过 `authHeaderType` 切换为 `Authorization: Bearer <apiKey>` 或自定义请求头名称。
+
+### Query 模式（`authMode: "query"`）
+
+适合快速验证或无法自定义请求头的客户端。
+
+```
+https://api-new.ifphp.com/api/svparse?key=<apiKey>&url=https://v.douyin.com/xxxx/
+```
+
 ## 请求方式 (Request Method)
 
 - 方法：GET
 - 参数：待解析链接通过查询参数 `url` 传递
-- 请求头：
-  - `User-Agent`
-  - `Referer: https://www.baidu.com/`
-  - `Content-Type: application/x-www-form-urlencoded`
-  - 认证头：默认 `X-API-Key: <apiKey>`，可切换为 `Authorization: Bearer <apiKey>` 或自定义请求头
+- 请求头：`User-Agent`、`Referer: https://www.baidu.com/`、`Content-Type: application/x-www-form-urlencoded`
 
 ## 主解析 API (Main API)
 
@@ -63,4 +81,4 @@ X-API-Key: <你的 API Key>
 | `primaryApiUrl` | 覆盖默认主 API 地址 |
 | `customApis[].apiUrl` | 按平台覆盖内置平台 API（`platform` 可选值含 `bilibili`/`douyin`/`kuaishou`/`doubao`/`jimeng`/`wechat_channel` 等） |
 | `customPlatforms[].apiUrl` | 新增自定义平台及其解析 API |
-| `apiKey` / `authHeaderType` / `customHeaderName` | 认证密钥与认证头方式 |
+| `apiKey` / `authMode` / `authHeaderType` / `customHeaderName` | 认证密钥与认证方式（Header/Query + 头类型） |
