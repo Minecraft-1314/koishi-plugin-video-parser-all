@@ -204,10 +204,16 @@ function cleanUrl(url: string): string {
             .replace(/&lt;/g, '<')
             .replace(/&gt;/g, '>')
             .replace(/\\\//g, '/')
-  url = url.replace(/^[\s"'<（(""''"]+/, '')
-  url = url.replace(/[\s"'<>\{\}\[\]`;,，。！？：；""''…—～.()）]+$/, '')
+  url = url.replace(/^[\s"'<>\[\]()\u201c\u201d]+/, '')
+  const trailingGarbage = /["',\s\u201c\u201d\)\]\}].*$/
+  const cleaned = url.replace(trailingGarbage, '')
+  if (cleaned) url = cleaned
   const tagStart = url.indexOf('<')
   if (tagStart > 0) url = url.slice(0, tagStart)
+  try {
+    const parsed = new URL(url)
+    url = parsed.origin + parsed.pathname + parsed.search + parsed.hash
+  } catch {}
   if (!/^https?:\/\//i.test(url)) {
     if (/^\/\//.test(url)) url = 'https:' + url
     else return url
