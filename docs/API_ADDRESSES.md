@@ -45,12 +45,14 @@ https://api-new.ifphp.com/api/svparse?key=<apiKey>&url=https://v.douyin.com/xxxx
 | 平台标识 | 平台 | API 地址 |
 |---------|------|----------|
 | `bilibili` | 哔哩哔哩 | `https://api-new.ifphp.com/api/bilibili` |
-| `douyin` | 抖音 | `https://api-new.ifphp.com/api/dyjx` |
+| `douyin` | 抖音 | `https://api-new.ifphp.com/api/dyjx`，失败后尝试 `https://api-new.ifphp.com/api/dydj` |
 | `kuaishou` | 快手 | `https://api-new.ifphp.com/api/ksjx` |
 | `wechat_channel` | 微信视频号 | `https://api-new.ifphp.com/api/wxsph` |
 | `doubao` | 豆包 | `https://api-new.ifphp.com/api/doubao` |
 | `jimeng` | 即梦/剪映 | `https://api-new.ifphp.com/api/jimeng` |
 | `pipigx` | 皮皮搞笑 | `https://api-new.ifphp.com/api/pipigx` |
+| `dola` | Dola | `https://api-new.ifphp.com/api/dola` |
+| `douyin` 二级回退 | 抖音 `video_id` 原画直链 | `https://api-new.ifphp.com/api/zjyh` |
 
 ## 请求示例 (Examples)
 
@@ -71,8 +73,9 @@ X-API-Key: <你的 API Key>
 ## 调用顺序 (Call Order)
 
 1. 默认：先请求主 API（`svparse`），失败或返回空内容时降级到平台专属 API。
-2. 若在配置中开启某平台的「优先使用专属 API」（`platformDedicatedFirst`），则先专属、后主 API。
-3. 自定义平台（`custom_` 前缀）只请求其配置的解析 API。
+2. 抖音按 `svparse` → `dyjx` → `dydj` 的顺序尝试；若前序接口返回 `video_id` 但没有媒体地址，再调用 `zjyh?video_id=<id>`。
+3. 若在配置中开启某平台的「优先使用专属 API」（`platformDedicatedFirst`），则先专属、后主 API。
+4. 自定义平台（`custom_` 前缀）只请求其配置的解析 API。
 
 ## 配置覆盖 (Configuration Overrides)
 

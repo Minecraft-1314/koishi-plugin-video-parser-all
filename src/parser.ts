@@ -48,11 +48,12 @@ export function parseApiResponse(raw: any, maxDescLen: number, fieldMapping?: Re
 
   let video = ''
   let videos: VideoQuality[] = []
+  let videoId = String(mapField('videoId', ['data.video_id', 'data.extra.video_id', 'data.play_addr.uri'], () => data.video_id || data.extra?.video_id || data.play_addr?.uri || '') ?? '')
   const videoBackup = mapField('video_backup', ['data.video_backup', 'data.video_qualities', 'data.video_quality'], () => data.video_backup)
   if (Array.isArray(videoBackup) && videoBackup.length) {
     const bestQ = pickBestQuality(videoBackup)
     videos = bestQ
-    video = bestQ[0]?.url || ''
+    video = bestQ.find(item => (item.bit_rate ?? 0) > 0)?.url || ''
   }
   if (!video) {
     const rawVideos = mapField('videos', ['data.videos', 'data.video_list'], () => data.videos)
@@ -103,6 +104,7 @@ export function parseApiResponse(raw: any, maxDescLen: number, fieldMapping?: Re
   if (!video && data.play_info && typeof data.play_info === 'object') {
     video = getFirst(data.play_info, ['url', 'play_url', 'video_url'], '')
   }
+  if (!video && videos.length) video = videos[0].url
   if (video) video = normalizeUrl(video)
 
   let images: string[] = []
@@ -216,5 +218,5 @@ export function parseApiResponse(raw: any, maxDescLen: number, fieldMapping?: Re
   if (title.trim().startsWith('#')) title = ''
   if (desc.trim().startsWith('#')) desc = ''
 
-  return { type, title, desc, author, uid, avatar, cover, video, videos, images, live_photo, music, like, comment, collect, share, play, duration, publishTime, author_followers, author_signature, admire }
+  return { type, title, desc, author, uid, avatar, cover, video, videoId, videos, images, live_photo, music, like, comment, collect, share, play, duration, publishTime, author_followers, author_signature, admire }
 }

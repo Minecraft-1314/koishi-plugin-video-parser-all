@@ -1,33 +1,48 @@
 import { Context, h } from 'koishi'
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios'
 import { Config } from './config'
-import { LinkMatch, ParsedData, ApiItem, CustomPlatformConfig } from './types'
-import { SimpleLRUCache, ConcurrencyLimiter, delay, getErrorMessage, parseFieldMapping, getFirst } from './utils'
+import type { PluginConfig } from './config'
+import { LinkMatch, ParsedData, CustomPlatformConfig } from './types'
+import { SimpleLRUCache, ConcurrencyLimiter, delay, getErrorMessage, parseFieldMapping } from './utils'
 import { logger, debugLog, setDebugEnabled } from './logger'
 import { buildCustomLinkRules, linkTypeParser, extractAllUrlsFromMessage } from './link-rules'
-import { generateFormattedText } from './format'
-import { fetchApi } from './service/api'
 import { processSingleUrl } from './service/parser'
 import { DeduplicationManager } from './dedupe'
 
 export { Config }
 export const name = 'video-parser-all'
 
-export function apply(ctx: Context, config: any) {
+interface SendResult {
+  success: boolean
+  uncertain: boolean
+}
+
+export function apply(ctx: Context, config: PluginConfig) {
   setDebugEnabled(config.debug || false)
   debugLog('INFO', 'plugin start')
   if (!config.apiKey) {
     logger.warn('未配置 api-new.ifphp.com API Key，所有解析请求可能失败。请在插件配置中填写 apiKey。')
   }
 
-  const dedupInterval = typeof config.deduplicationInterval === 'number' && config.deduplicationInterval > 0 ? config.deduplicationInterval : 180
+  const dedupInterval = typeof config.deduplicationInterval === 'number' && config.deduplicationInterval >= 0 ? config.deduplicationInterval : 180
   const deduplication = new DeduplicationManager(dedupInterval)
-  const dedupCache = new SimpleLRUCache<number>(1000, dedupInterval * 1000)
-  const cacheTTL = (config.cacheTTL || 600) * 1000
-  const urlCacheLocal = new SimpleLRUCache<{ data: ParsedData; expire: number }>(500, cacheTTL)
+  const dedupCache = new SimpleLRUCache<number>(1000, Math.max(dedupInterval, 1) * 1000)
+  const cacheTTL = typeof config.cacheTTL === 'number' && config.cacheTTL >= 0 ? config.cacheTTL * 1000 : 60000
   const contentDedupCache = new SimpleLRUCache<number>(1000, dedupInterval * 1000)
-  const pendingSends = new Map<string, Promise<void>>()
+  const pendingSends = new Map<string, Promise<SendResult>>()
   const processingMessages = new Set<string>()
+  const requestConfig = {
+    maxDescLength: config.maxDescLength,
+    unifiedMessageFormat: config.unifiedMessageFormat,
+    authMode: config.authMode,
+    timeout: config.timeout,
+    userAgent: config.userAgent,
+    retryTimes: config.retryTimes,
+    retryInterval: config.retryInterval,
+    customHeaders: config.customHeaders,
+    primaryApiUrl: config.primaryApiUrl,
+    cacheTTL,
+  }
 
   function contentFingerprint(p: ParsedData): string {
     const imgSig = p.images?.length ? p.images.slice(0, 3).join('|') : (p.live_photo ? p.live_photo.slice(0, 3).map(lp => lp.image).join('|') : '')
@@ -46,9 +61,21 @@ export function apply(ctx: Context, config: any) {
     return config[key] || defaults[key] || ''
   }
 
+  async function sendDeduplicationTip(session: any, url: string): Promise<void> {
+    const shortUrl = url.length > 80 ? url.slice(0, 80) + '...' : url
+    const tip = getText('deduplicationTipText')
+      .replace(/\$\{url\}/g, shortUrl)
+      .replace(/\$\{interval\}/g, String(config.deduplicationInterval))
+    await sendSafe(session, tip, getText('deduplicationTipText'))
+  }
+
   async function sendSafe(session: any, content: any, contextLabel: string): Promise<boolean> {
     try {
-      await sendWithTimeout(session, content)
+      const result = await sendWithTimeout(session, content)
+      if (!result.success && !result.uncertain) {
+        await sendWithTimeout(session, `发送失败：${contextLabel}`)
+        return false
+      }
       return true
     } catch (err) {
       debugLog('ERROR', `发送失败 [${contextLabel}]: ${getErrorMessage(err)}`)
@@ -70,13 +97,13 @@ export function apply(ctx: Context, config: any) {
     proxy: p.proxy || null
   }))
 
-  function getPlatformConfig(type: string): { apiUrl: string | null; dedicatedFirst: boolean; apiKey: string; authHeaderType: string; customHeaderName: string; fieldMapping?: Record<string, string>; customProxy?: any } {
+  function getPlatformConfig(type: string): { apiUrls: string[]; dedicatedFirst: boolean; apiKey: string; authHeaderType: string; customHeaderName: string; fieldMapping?: Record<string, string>; customProxy?: any; videoIdApiUrl?: string; videoIdParam?: string } {
     if (type.startsWith('custom_')) {
       const name = type.slice(7)
       const custom = customPlatforms.find(p => p.name === name)
       if (custom) {
         return {
-          apiUrl: custom.apiUrl,
+          apiUrls: custom.apiUrl ? [custom.apiUrl] : [],
           dedicatedFirst: true,
           apiKey: custom.apiKey || config.apiKey || '',
           authHeaderType: custom.authHeaderType,
@@ -85,26 +112,27 @@ export function apply(ctx: Context, config: any) {
           customProxy: custom.proxy
         }
       }
-      return { apiUrl: null, dedicatedFirst: false, apiKey: config.apiKey || '', authHeaderType: 'X-API-Key', customHeaderName: 'X-API-Key' }
+      return { apiUrls: [], dedicatedFirst: false, apiKey: config.apiKey || '', authHeaderType: 'X-API-Key', customHeaderName: 'X-API-Key' }
     }
 
     const custom = config.customApis?.find((item: any) => item.platform === type)
-    const defaultDedicatedApis: Record<string, string> = {
-      bilibili: 'https://api-new.ifphp.com/api/bilibili',
-      douyin: 'https://api-new.ifphp.com/api/dyjx',
-      kuaishou: 'https://api-new.ifphp.com/api/ksjx',
-      wechat_channel: 'https://api-new.ifphp.com/api/wxsph',
-      doubao: 'https://api-new.ifphp.com/api/doubao',
-      pipigx: 'https://api-new.ifphp.com/api/pipigx',
-      jimeng: 'https://api-new.ifphp.com/api/jimeng',
+    const defaultDedicatedApis: Record<string, string[]> = {
+      bilibili: ['https://api-new.ifphp.com/api/bilibili'],
+      douyin: ['https://api-new.ifphp.com/api/dyjx', 'https://api-new.ifphp.com/api/dydj'],
+      kuaishou: ['https://api-new.ifphp.com/api/ksjx'],
+      wechat_channel: ['https://api-new.ifphp.com/api/wxsph'],
+      doubao: ['https://api-new.ifphp.com/api/doubao'],
+      pipigx: ['https://api-new.ifphp.com/api/pipigx'],
+      jimeng: ['https://api-new.ifphp.com/api/jimeng'],
+      dola: ['https://api-new.ifphp.com/api/dola'],
     }
-    let apiUrl = defaultDedicatedApis[type] || null
+    let apiUrls = defaultDedicatedApis[type] || []
     let apiKey = config.apiKey || ''
     let authHeaderType = 'X-API-Key'
     let customHeaderName = 'X-API-Key'
     let fieldMapping: Record<string, string> | undefined = undefined
     if (custom && custom.apiUrl) {
-      apiUrl = custom.apiUrl
+      apiUrls = [custom.apiUrl]
       apiKey = custom.apiKey || config.apiKey || ''
       authHeaderType = custom.authHeaderType || 'X-API-Key'
       customHeaderName = custom.customHeaderName || 'X-API-Key'
@@ -114,27 +142,23 @@ export function apply(ctx: Context, config: any) {
     if (!fieldMapping) {
       fieldMapping = parseFieldMapping(config.globalFieldMapping)
     }
-    return { apiUrl, dedicatedFirst, apiKey, authHeaderType, customHeaderName, fieldMapping }
+    const videoIdConfig = type === 'douyin' ? {
+      videoIdApiUrl: 'https://api-new.ifphp.com/api/zjyh',
+      videoIdParam: 'video_id',
+    } : {}
+    return { apiUrls, dedicatedFirst, apiKey, authHeaderType, customHeaderName, fieldMapping, ...videoIdConfig }
   }
 
-  function buildAuthHeaders(apiKey: string, authHeaderType: string, customHeaderName: string): Record<string, string> {
-    if (!apiKey) return {}
-    if (authHeaderType === 'Bearer') return { 'Authorization': `Bearer ${apiKey}` }
-    if (authHeaderType === 'X-API-Key') return { 'X-API-Key': apiKey }
-    if (authHeaderType === 'Custom' && customHeaderName) return { [customHeaderName]: apiKey }
-    return {}
-  }
-
-  async function sendWithTimeout(session: any, content: any, customRetries?: number): Promise<any> {
+  async function sendWithTimeout(session: any, content: any, customRetries?: number): Promise<SendResult> {
     const messageId = session?.messageId
     const sendKey = messageId ? `${messageId}::${typeof content === 'string' ? content : JSON.stringify(content)}` : null
     if (sendKey) {
       const existing = pendingSends.get(sendKey)
-      if (existing) return existing.catch(() => null)
+      if (existing) return existing
     }
     const sendPromise = (async () => {
       const maxRetries = customRetries ?? config.retryTimes ?? 3
-      const retryDelay = config.retryInterval || 1000
+      const retryDelay = config.retryInterval ?? 1000
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
           if (config.videoSendTimeout > 0) {
@@ -150,25 +174,27 @@ export function apply(ctx: Context, config: any) {
           } else {
             await session.send(content)
           }
-          return
+          return { success: true, uncertain: false }
         } catch (err) {
           const errMsg = getErrorMessage(err)
           if (errMsg === '发送超时') {
             debugLog('WARN', `发送超时（消息可能仍在发送中）: ${errMsg}`)
-            return
+            return { success: false, uncertain: true }
           }
           debugLog('ERROR', `发送失败尝试 ${attempt + 1}: ${errMsg}`)
           if (attempt < maxRetries) await delay(retryDelay)
           else if (!config.ignoreSendError) throw err
+          else return { success: false, uncertain: false }
         }
       }
+      return { success: false, uncertain: false }
     })().catch((err) => {
       debugLog('ERROR', `发送最终失败: ${getErrorMessage(err)}`)
       throw err
     })
     if (sendKey) pendingSends.set(sendKey, sendPromise)
     try {
-      await sendPromise
+      return await sendPromise
     } finally {
       if (sendKey) pendingSends.delete(sendKey)
     }
@@ -181,7 +207,10 @@ export function apply(ctx: Context, config: any) {
       return
     }
     try {
-      await sendWithTimeout(session, type === 'audio' ? h.audio(url) : type === 'video' ? h.video(url) : h.image(url))
+      const result = await sendWithTimeout(session, type === 'audio' ? h.audio(url) : type === 'video' ? h.video(url) : h.image(url))
+      if (!result.success && !result.uncertain) {
+        await sendSafe(session, `${type === 'audio' ? '音乐' : type === 'video' ? '视频' : '图片'}链接：${url}`, `${type}降级`)
+      }
     } catch {
       await sendSafe(session, `${type === 'audio' ? '音乐' : type === 'video' ? '视频' : '图片'}链接：${url}`, `${type}降级`)
     }
@@ -210,19 +239,14 @@ export function apply(ctx: Context, config: any) {
           const lastTime = dedupCache.get(match.url)
           if (lastTime && Date.now() - lastTime < config.deduplicationInterval * 1000) {
             debugLog('INFO', `跳过重复链接: ${match.url}`)
-            const shortUrl = match.url.length > 80 ? match.url.slice(0, 80) + '...' : match.url
-            const tip = getText('deduplicationTipText')
-              .replace(/\$\{url\}/g, shortUrl)
-              .replace(/\$\{interval\}/g, String(config.deduplicationInterval))
-            await sendSafe(session, tip, getText('deduplicationTipText'))
+            await sendDeduplicationTip(session, match.url)
             return
           }
         }
 
         debugLog('INFO', `解析链接: ${match.url} (${match.type})`)
         const platformConf = getPlatformConfig(match.type)
-        const fieldMapping = platformConf.fieldMapping
-        const result = await processSingleUrl(http, { maxDescLength: config.maxDescLength, unifiedMessageFormat: config.unifiedMessageFormat }, match.url, match.type, fieldMapping, platformConf)
+        const result = await processSingleUrl(http, requestConfig, match.url, match.type, platformConf)
 
         if (result.success) {
           if (config.enableDeduplication !== false && config.deduplicationInterval > 0) {
@@ -230,6 +254,8 @@ export function apply(ctx: Context, config: any) {
             const lastDedup = contentDedupCache.get(fp)
             if (lastDedup && Date.now() - lastDedup < config.deduplicationInterval * 1000) {
               debugLog('INFO', `跳过重复内容: ${match.url}`)
+              dedupCache.set(match.url, Date.now())
+              await sendDeduplicationTip(session, match.url)
               return
             }
             contentDedupCache.set(fp, Date.now())
@@ -342,7 +368,8 @@ export function apply(ctx: Context, config: any) {
       for (let i = 0; i < forwardMessages.length; i += MAX_NODES) {
         const batch = forwardMessages.slice(i, i + MAX_NODES)
         try {
-          await sendWithTimeout(session, h('message', { forward: true }, batch), config.retryTimes)
+          const result = await sendWithTimeout(session, h('message', { forward: true }, batch), config.retryTimes)
+          if (!result.success && !result.uncertain) throw new Error('合并转发发送失败')
         } catch (err) {
           debugLog('ERROR', '合并转发失败，降级逐条发送:', err)
           for (const node of batch) {
@@ -491,7 +518,6 @@ export function apply(ctx: Context, config: any) {
   })
 
   ctx.on('dispose', () => {
-    urlCacheLocal.clear()
     dedupCache.clear()
     contentDedupCache.clear()
     deduplication.clear()

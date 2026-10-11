@@ -12,14 +12,14 @@
 
 | 文档 | 说明 |
 |------|------|
-| [CHANGELOG-v1.7.4.md](docs/CHANGELOG-v1.7.4.md) | v1.7.4 版本更新日志 |
+| [CHANGELOG-v1.7.5.md](docs/CHANGELOG-v1.7.5.md) | v1.7.5 版本更新日志 |
 | [API_ADDRESSES.md](docs/API_ADDRESSES.md) | 插件 API 解析地址一览（主 API 与各平台专属接口） |
 | [COMPATIBILITY.md](docs/COMPATIBILITY.md) | API 字段兼容性说明（支持的所有字段别名） |
 | [LINK_RULES.md](docs/LINK_RULES.md) | 所有平台的链接匹配规则（正则表达式） |
 
 ## 项目介绍
 
-这是一个为 Koishi 机器人框架开发的**全平台视频/图集解析插件**，支持自动识别并解析抖音、快手、B站、小红书、微博、西瓜视频、YouTube、TikTok、AcFun（A站）、知乎、微视、虎牙、好看视频、美拍、Twitter/X、Instagram、豆包（视频/图集）、**即梦（AI视频/图片）**、绿洲、视频号、梨视频、全民直播、皮皮搞笑、皮皮虾、最右等**20+主流平台**的短视频/图集/实况链接。
+这是一个为 Koishi 机器人框架开发的**全平台视频/图集解析插件**，支持自动识别并解析抖音、快手、B站、小红书、微博、西瓜视频、YouTube、TikTok、AcFun（A站）、知乎、微视、虎牙、好看视频、美拍、Twitter/X、Instagram、豆包（视频/图集）、**即梦（AI视频/图片）**、绿洲、视频号、梨视频、全民直播、皮皮搞笑、皮皮虾、最右、Dola 等**20+主流平台**的短视频/图集/实况链接。
 
 ## 项目仓库
 
@@ -125,12 +125,12 @@
 | 配置项 | 类型 | 默认值 | 说明 |
 |------|------|------|------|
 | `primaryApiUrl` | string | `https://api-new.ifphp.com/api/svparse` | 主解析 API 地址（聚合接口） |
-| `platformDedicatedFirst` | object | 全关 | 优先使用专属 API（仅 `bilibili`、`douyin`、`kuaishou`、`wechat_channel`、`doubao`、`pipigx`、`jimeng`） |
+| `platformDedicatedFirst` | object | 全关 | 优先使用专属 API（仅 `bilibili`、`douyin`、`kuaishou`、`wechat_channel`、`doubao`、`pipigx`、`jimeng`、`dola`） |
 | `customApis` | array | `[]` | 覆盖内置平台 API |
 | `customPlatforms` | array | `[]` | 自定义新平台 |
 | `globalFieldMapping` | string | 预设 | 全局字段映射 JSON |
 
-> 专属 API 包括：`bilibili`、`douyin`、`kuaishou`、`wechat_channel`、`doubao`、`pipigx`、`jimeng`。
+> 专属 API 包括：`bilibili`、`douyin`、`kuaishou`、`wechat_channel`、`doubao`、`pipigx`、`jimeng`、`dola`。抖音接口顺序为 `svparse` → `dyjx` → `dydj`；前序接口只返回 `video_id` 时，最后尝试 `zjyh` 原画直链解析。
 
 ### 界面文本
 
@@ -172,6 +172,7 @@
 |------|------|------|
 | 哔哩哔哩（B站） | `bilibili.com/video/`、`b23.tv`、`bili*.cn`、`b23.wtf`、`b2233.cn` | 视频 |
 | 抖音 | `douyin.com/video/`、`v.douyin.com` | 短视频、图集、实况 |
+| Dola | `dola.com/thread/` | 短视频 |
 | 快手 | `kuaishou.com/short-video/`、`v.kuaishou.com`、`kuaishou.com/f/` | 短视频、图集 |
 | 小红书 | `xiaohongshu.com/discovery/item/`、`xhslink.com`、`xiaohongshu.com/explore/`、`xiaohongshu.com/board/` | 图文、视频 |
 | 微博 | `weibo.com/数字/`、`video.weibo.com/show`、`t.cn`、`m.weibo.cn` | 视频、图集 |

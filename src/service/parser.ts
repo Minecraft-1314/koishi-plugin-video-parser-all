@@ -1,7 +1,7 @@
 export { parseApiResponse } from '../parser'
 import { generateFormattedText } from '../format'
 import { debugLog } from '../logger'
-import type { LinkMatch, ParsedData } from '../types'
+import type { ParsedData } from '../types'
 import { fetchApi } from './api'
 
 export async function processSingleUrl(
@@ -9,10 +9,17 @@ export async function processSingleUrl(
   config: {
     maxDescLength: number
     unifiedMessageFormat: string
+    authMode?: string
+    timeout?: number
+    userAgent?: string
+    retryTimes?: number
+    retryInterval?: number
+    customHeaders?: { name: string; value: string }[]
+    primaryApiUrl?: string
+    cacheTTL?: number
   },
   url: string,
   type: string,
-  fieldMapping?: Record<string, string>,
   platformConf?: any
 ): Promise<{ success: true; data: { text: string; parsed: ParsedData } } | { success: false; msg: string; url: string }> {
   try {

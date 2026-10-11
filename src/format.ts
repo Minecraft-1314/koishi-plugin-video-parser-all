@@ -1,9 +1,10 @@
-import { ParsedData } from './types'
+import type { ParsedData } from './types'
 import { formatDuration, formatPublishTime } from './utils'
 
 const formatVarRegex = /\$\{([^}]+)\}/g
+export const DEFAULT_MESSAGE_FORMAT = '标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}'
 
-export function generateFormattedText(p: ParsedData, format: string, index?: number, total?: number): string {
+export function generateFormattedText(p: ParsedData, format?: string, index?: number, total?: number): string {
   const imageCount = (p.images?.length || 0) || (p.live_photo?.length || 0)
   const vars: Record<string, string> = {
     '标题': p.title,
@@ -22,7 +23,7 @@ export function generateFormattedText(p: ParsedData, format: string, index?: num
     '音乐作者': p.music.author || '',
   }
 
-  const lines = format.split('\n')
+  const lines = (typeof format === 'string' && format ? format : DEFAULT_MESSAGE_FORMAT).split('\n')
   const resultLines: string[] = []
   for (const line of lines) {
     const varMatches = line.match(formatVarRegex)

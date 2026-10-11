@@ -1,12 +1,17 @@
 export class DeduplicationManager {
-  private readonly messageIds = new Set<string>()
+  private readonly messageTimes = new Map<string, number>()
   private readonly locks = new Set<string>()
 
   constructor(private interval: number) {}
 
   isMessageProcessed(messageId: string): boolean {
-    if (this.messageIds.has(messageId)) return true
-    this.messageIds.add(messageId)
+    if (this.interval <= 0) return false
+    const now = Date.now()
+    for (const [id, timestamp] of this.messageTimes) {
+      if (now - timestamp >= this.interval * 1000) this.messageTimes.delete(id)
+    }
+    if (this.messageTimes.has(messageId)) return true
+    this.messageTimes.set(messageId, now)
     return false
   }
 
@@ -21,7 +26,7 @@ export class DeduplicationManager {
   }
 
   clear(): void {
-    this.messageIds.clear()
+    this.messageTimes.clear()
     this.locks.clear()
   }
 }

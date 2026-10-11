@@ -1,4 +1,9 @@
 import { Schema } from 'koishi'
+import { DEFAULT_MESSAGE_FORMAT } from './format'
+
+type Infer<T> = T extends Schema<infer U> ? U : never
+
+export type PluginConfig = Infer<typeof Config>
 
 export const Config = Schema.intersect([
   Schema.object({
@@ -33,13 +38,12 @@ export const Config = Schema.intersect([
       pipixia: Schema.boolean().default(true).description('皮皮虾'),
       zuiyou: Schema.boolean().default(true).description('最右'),
       jimeng: Schema.boolean().default(true).description('即梦/剪映'),
+      dola: Schema.boolean().default(true).description('Dola'),
     }).description('各平台解析开关'),
   }).description('基本设置'),
 
   Schema.object({
-    unifiedMessageFormat: Schema.string().role('textarea').default(
-      '标题：${标题}\n作者：${作者}\n简介：${简介}\n音乐标题：${音乐标题}\n音乐作者：${音乐作者}\n点赞：${点赞数}\n收藏：${收藏数}\n转发：${转发数}\n播放：${播放数}\n评论：${评论数}\n图片数量：${图片数量}'
-    ).description('文字格式，支持变量：${标题} ${作者} ${简介} ${视频时长} ${点赞数} ${收藏数} ${转发数} ${播放数} ${评论数} ${发布时间} ${图片数量} ${作者ID} ${音乐标题} ${音乐作者}，空行自动隐藏'),
+    unifiedMessageFormat: Schema.string().role('textarea').default(DEFAULT_MESSAGE_FORMAT).description('文字格式，支持变量：${标题} ${作者} ${简介} ${视频时长} ${点赞数} ${收藏数} ${转发数} ${播放数} ${评论数} ${发布时间} ${图片数量} ${作者ID} ${音乐标题} ${音乐作者}，空行自动隐藏'),
   }).description('消息格式'),
 
   Schema.object({
@@ -71,7 +75,7 @@ export const Config = Schema.intersect([
     timeout: Schema.number().min(0).step(1).default(180000).description('API 请求超时 (ms)'),
     videoSendTimeout: Schema.number().min(0).step(1).default(180000).description('消息发送超时 (ms)'),
     userAgent: Schema.string().default('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36').description('User-Agent'),
-    apiKey: Schema.string().default('').description('api-new.ifphp.com API Key'),
+    apiKey: Schema.string().role('secret').default('').description('api-new.ifphp.com API Key'),
     authMode: Schema.union([
       Schema.const('header').description('Header（推荐，X-API-Key 头）'),
       Schema.const('query').description('Query（URL 参数 ?key=xxx）'),
@@ -120,6 +124,7 @@ export const Config = Schema.intersect([
       wechat_channel: Schema.boolean().default(false).description('视频号'),
       pipigx: Schema.boolean().default(false).description('皮皮搞笑'),
       jimeng: Schema.boolean().default(false).description('即梦/剪映'),
+      dola: Schema.boolean().default(false).description('Dola'),
     }).description('优先使用专属 API'),
     customApis: Schema.array(
       Schema.object({
@@ -142,6 +147,7 @@ export const Config = Schema.intersect([
           Schema.const('instagram').description('Instagram'),
           Schema.const('doubao').description('豆包'),
           Schema.const('jimeng').description('即梦/剪映'),
+          Schema.const('dola').description('Dola'),
           Schema.const('oasis').description('绿洲'),
           Schema.const('wechat_channel').description('视频号'),
         ]).description('平台'),

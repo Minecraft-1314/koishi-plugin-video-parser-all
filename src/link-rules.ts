@@ -9,6 +9,9 @@ export const BUILTIN_LINK_RULES: { pattern: RegExp; type: string }[] = [
   { pattern: /https?:\/\/v\.douyin\.com\/[^\s'""]*/gi, type: 'douyin' },
   { pattern: /https?:\/\/(?:[a-z0-9-]+\.)*douyin\.com\/[^\s'""]*/gi, type: 'douyin' },
 
+  { pattern: /https?:\/\/(?:www\.)?dola\.com\/thread\/[0-9a-zA-Z_-]+(?:\?[^\s'""]*)?/gi, type: 'dola' },
+  { pattern: /https?:\/\/(?:[a-z0-9-]+\.)*dola\.com\/[^\s'""]*/gi, type: 'dola' },
+
   { pattern: /https?:\/\/(?:www\.)?kuaishou\.com\/short-video\/[0-9a-zA-Z_\/-]+(?:\?[^\s'""]*)?/gi, type: 'kuaishou' },
   { pattern: /https?:\/\/v\.kuaishou\.com\/[^\s'""]*/gi, type: 'kuaishou' },
   { pattern: /https?:\/\/(?:www\.)?kuaishou\.com\/f\/[0-9a-zA-Z_\/-]+(?:\?[^\s'""]*)?/gi, type: 'kuaishou' },
@@ -132,6 +135,10 @@ function dedupeKey(url: string, type: string): string {
   if (type === 'douyin') {
     const m = url.match(/douyin\.com\/video\/(\d+)/)
     if (m) return `douyin:${m[1]}`
+  }
+  if (type === 'dola') {
+    const m = url.match(/dola\.com\/thread\/([0-9a-zA-Z_-]+)/i)
+    if (m) return `dola:${m[1]}`
   }
   if (type === 'kuaishou') {
     const m = url.match(/kuaishou\.com\/short-video\/([0-9a-zA-Z_/-]+)/)

@@ -39,7 +39,19 @@ https?://v.douyin.com/[^s'"“”‘’]*
 
 ---
 
-## 3. 快手 (kuaishou)
+## 3. Dola
+
+```regex
+https?://(?:www\.)?dola\.com/thread/[0-9a-zA-Z_-]+(?:\?[^\s'""]*)?
+https?://(?:[a-z0-9-]+\.)*dola\.com/[^\s'""]*
+```
+
+**示例链接**：
+- `https://www.dola.com/thread/xQwpNNt8dYkgWIudL`
+
+---
+
+## 4. 快手 (kuaishou)
 
 ```regex
 https?://(?:www.)?kuaishou.com/short-video/[0-9a-zA-Z_/-]+(?:?[^s'"“”‘’]*)?
@@ -57,7 +69,7 @@ https?://(?:[a-z0-9-]+.)*kwai.com/[^s'"“”‘’]*
 
 ---
 
-## 4. 小红书 (xiaohongshu)
+## 5. 小红书 (xiaohongshu)
 
 ```regex
 https?://(?:www.)?xiaohongshu.com/discovery/item/[0-9a-zA-Z_/-]+(?:?[^s'"“”‘’]*)?
@@ -74,7 +86,7 @@ https?://(?:xhslink.com|xhslink.cn|xhsurl.cn|xhsurl.com)/[^s'"“”‘’]*
 
 ---
 
-## 5. 微博 (weibo)
+## 6. 微博 (weibo)
 
 ```regex
 https?://weibo.com/d+/[0-9a-zA-Z_/-]+(?:?[^s'"“”‘’]*)?
@@ -92,7 +104,7 @@ https?://t.cn/[^s'"“”‘’]*
 
 ---
 
-## 6. 西瓜视频 (xigua)
+## 7. 西瓜视频 (xigua)
 
 ```regex
 https?://(?:www.)?ixigua.com/d{10,}(?:?[^s'"“”‘’]*)?
@@ -104,7 +116,7 @@ https?://(?:[a-z0-9-]+.)*ixigua.com/[^s'"“”‘’]*
 
 ---
 
-## 7. YouTube (youtube)
+## 8. YouTube (youtube)
 
 ```regex
 https?://(?:www.)?youtube.com/watch?v=[a-zA-Z0-9_-]{11}(?:&[^s'"“”‘’]*)?
@@ -120,7 +132,7 @@ https?://youtu.be/[^s'"“”‘’]*
 
 ---
 
-## 8. TikTok (tiktok)
+## 9. TikTok (tiktok)
 
 ```regex
 https?://(?:www.)?tiktok.com/@[w.]+/video/d{10,}(?:?[^s'"“”‘’]*)?
@@ -136,7 +148,7 @@ https?://(?:vm|vt).tiktok.com/[^s'"“”‘’]*
 
 ---
 
-## 9. AcFun（A站）(acfun)
+## 10. AcFun（A站）(acfun)
 
 ```regex
 https?://(?:www.)?acfun.cn/v/acd{10,}(?:?[^s'"“”‘’]*)?
@@ -150,7 +162,7 @@ https?://(?:acfun.tv|acfun.com)/[^s'"“”‘’]*
 
 ---
 
-## 10. 知乎 (zhihu)
+## 11. 知乎 (zhihu)
 
 ```regex
 https?://(?:www.)?zhihu.com/video/d{10,}(?:?[^s'"“”‘’]*)?
@@ -168,7 +180,7 @@ https?://zhi.hu/[^s'"“”‘’]+
 
 ---
 
-## 11. 微视 (weishi)
+## 12. 微视 (weishi)
 
 ```regex
 https?://weishi.qq.com/weishi/feed/[0-9a-zA-Z_/-]+(?:?[^s'"“”‘’]*)?
@@ -181,7 +193,7 @@ https?://(?:www.)?weishi.com/[^s'"“”‘’]*
 
 ---
 
-## 12. 虎牙 (huya)
+## 13. 虎牙 (huya)
 
 ```regex
 https?://(?:www.)?huya.com/video/[0-9a-zA-Z_/-]+(?:?[^s'"“”‘’]*)?
@@ -193,7 +205,7 @@ https?://(?:[a-z0-9-]+.)*huya.com/[^s'"“”‘’]*
 
 ---
 
-## 13. 好看视频 (haokan)
+## 14. 好看视频 (haokan)
 
 ```regex
 https?://haokan.baidu.com/v?vid=[0-9a-zA-Z_/-]+
@@ -206,7 +218,7 @@ https?://(?:www.)?haokan.com/[^s'"“”‘’]*
 
 ---
 
-## 14. 美拍 (meipai)
+## 15. 美拍 (meipai)
 
 ```regex
 https?://(?:www.)?meipai.com/media/d{10,}(?:?[^s'"“”‘’]*)?
@@ -218,7 +230,7 @@ https?://(?:[a-z0-9-]+.)*meipai.com/[^s'"“”‘’]*
 
 ---
 
-## 15. Twitter / X (twitter)
+## 16. Twitter / X (twitter)
 
 ```regex
 https?://twitter.com/w+/status/d{10,}(?:?[^s'"“”‘’]*)?
@@ -233,7 +245,7 @@ https?://t.co/[^s'"“”‘’]+
 
 ---
 
-## 16. Instagram (instagram)
+## 17. Instagram (instagram)
 
 ```regex
 https?://(?:www.)?instagram.com/p/[0-9a-zA-Z_/-]+(?:?[^s'"“”‘’]*)?
@@ -249,7 +261,7 @@ https?://(?:instagr.am|ig.me)/[^s'"“”‘’]+
 
 ---
 
-## 17. 豆包 (doubao)
+## 18. 豆包 (doubao)
 
 ```regex
 https?://(?:www.)?doubao.com/video/d{10,}(?:?[^s'"“”‘’]*)?
@@ -264,7 +276,7 @@ https?://(?:[a-z0-9-]+.)*doubao.com/[^s'"“”‘’]*
 
 ---
 
-## 18. 豆包图片 (doubao_image)
+## 19. 豆包图片 (doubao_image)
 
 ```regex
 https?://(?:www.)?doubao.com/thread/[^s'"“”‘’]+
@@ -275,7 +287,7 @@ https?://(?:www.)?doubao.com/thread/[^s'"“”‘’]+
 
 ---
 
-## 19. 绿洲 (oasis)
+## 20. 绿洲 (oasis)
 
 ```regex
 https?://(?:www.)?oasis.weibo.com/v/[0-9a-zA-Z_/-]+(?:?[^s'"“”‘’]*)?
@@ -289,7 +301,7 @@ https?://(?:www.)?lvzhou.com/[^s'"“”‘’]*
 
 ---
 
-## 20. 微信视频号 (wechat_channel)
+## 21. 微信视频号 (wechat_channel)
 
 ```regex
 https?://channels.weixin.qq.com/[^s'"“”‘’]+
@@ -303,7 +315,7 @@ https?://(?:[a-z0-9-]+.)*channels.weixin.qq.com/[^s'"“”‘’]*
 
 ---
 
-## 21. 梨视频 (lishi)
+## 22. 梨视频 (lishi)
 
 ```regex
 https?://(?:www.)?pearvideo.com/video_d+(?:?[^s'"“”‘’]*)?
@@ -318,7 +330,7 @@ https?://video.li/[^s'"“”‘’]*
 
 ---
 
-## 22. 全民直播 (quanmin)
+## 23. 全民直播 (quanmin)
 
 ```regex
 https?://(?:www.)?quanmin.tv/[^s'"“”‘’]+
@@ -332,7 +344,7 @@ https?://(?:[a-z0-9-]+.)*quanmintv.cn/[^s'"“”‘’]*
 
 ---
 
-## 23. 皮皮搞笑 (pipigx)
+## 24. 皮皮搞笑 (pipigx)
 
 ```regex
 https?://h5.pipigx.com/pp/post/d+(?:?[^s'"“”‘’]*)?
@@ -347,7 +359,7 @@ https?://(?:[a-z0-9-]+.)*ippzone.com/[^s'"“”‘’]*
 
 ---
 
-## 24. 皮皮虾 (pipixia)
+## 25. 皮皮虾 (pipixia)
 
 ```regex
 https?://(?:h5|www).pipix.com/[^s'"“”‘’]+
@@ -361,7 +373,7 @@ https?://(?:[a-z0-9-]+.)*pipix.com/[^s'"“”‘’]*
 
 ---
 
-## 25. 最右 (zuiyou)
+## 26. 最右 (zuiyou)
 
 ```regex
 https?://share.xiaochuankeji.cn/hybrid/share/post?pid=d+
@@ -377,7 +389,7 @@ https?://(?:[a-z0-9-]+.)*zuiyou.tv/[^s'"“”‘’]*
 
 ---
 
-## 26. 即梦/剪映 (jimeng)
+## 27. 即梦/剪映 (jimeng)
 
 ```regex
 https?://(?:www.)?jimeng.jianying.com/[^s'"“”‘’]*
@@ -395,7 +407,7 @@ https?://(?:[a-z0-9-]+.)*dreamina.capcut.com/[^s'"“”‘’]*
 
 ---
 
-## 27. 自定义平台规则
+## 28. 自定义平台规则
 
 自定义平台使用**关键词匹配**方式，根据配置的 `keywords`（逗号分隔）生成正则表达式：
 

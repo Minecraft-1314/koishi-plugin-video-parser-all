@@ -13,6 +13,7 @@ export interface ParsedData {
   avatar: string
   cover: string
   video: string
+  videoId: string
   videos: VideoQuality[]
   images: string[]
   live_photo: Array<{ image: string; video: string }>
@@ -42,6 +43,7 @@ export interface ApiItem {
   authHeaderType?: string
   customHeaderName?: string
   fieldMapping?: Record<string, string>
+  videoIdParam?: string
 }
 
 export interface CustomPlatformConfig {

@@ -80,10 +80,11 @@ export function pickBestQuality(videoBackup: any[]): VideoQuality[] {
 
 export function getNestedValue(obj: any, path: string): any {
   if (!path) return obj
-  const keys = path.split('.')
+  const keys = path.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean)
   let current = obj
   for (const key of keys) {
     if (current === null || current === undefined) return undefined
+    if (typeof current !== 'object' || !Object.prototype.hasOwnProperty.call(current, key)) return undefined
     current = current[key]
   }
   return current
@@ -155,7 +156,7 @@ export function parseFieldMapping(mappingStr: string): Record<string, string> | 
   if (!mappingStr || mappingStr.trim() === '{}' || mappingStr.trim() === '') return undefined
   try {
     const obj = JSON.parse(mappingStr)
-    if (typeof obj === 'object' && !Array.isArray(obj)) return obj
+    if (obj && typeof obj === 'object' && !Array.isArray(obj) && Object.values(obj).every(value => typeof value === 'string')) return obj as Record<string, string>
     return undefined
   } catch {
     return undefined

@@ -13,14 +13,14 @@ Please read first:
 
 | Document | Description |
 |------|------|
-| [CHANGELOG-v1.7.4.md](docs/CHANGELOG-v1.7.4.md) | v1.7.4 changelog |
+| [CHANGELOG-v1.7.5.md](docs/CHANGELOG-v1.7.5.md) | v1.7.5 changelog |
 | [API_ADDRESSES.md](docs/API_ADDRESSES.md) | API parsing addresses for the main gateway and platform-specific endpoints |
 | [COMPATIBILITY.md](docs/COMPATIBILITY.md) | API field compatibility notes, including all supported field aliases |
 | [LINK_RULES.md](docs/LINK_RULES.md) | Link matching rules for all supported platforms (regex) |
 
 ## Introduction
 
-This is a **cross-platform video/image parsing plugin** developed for the Koishi framework. It supports automatic recognition and parsing of short video/image/live links from **20+ mainstream platforms**, including Douyin, Kuaishou, Bilibili, Xiaohongshu, Weibo, Xigua Video, YouTube, TikTok, AcFun, Zhihu, Weishi, Huya, Haokan Video, Meipai, Twitter/X, Instagram, Doubao (video/image), **Jimeng (AI video/image)**, Oasis, Video Account, Pear Video, Quanmin Live, Pipi Funny, Pipi Shrimp, and Zuiyou.
+This is a **cross-platform video/image parsing plugin** developed for the Koishi framework. It supports automatic recognition and parsing of short video/image/live links from **20+ mainstream platforms**, including Douyin, Kuaishou, Bilibili, Xiaohongshu, Weibo, Xigua Video, YouTube, TikTok, AcFun, Zhihu, Weishi, Huya, Haokan Video, Meipai, Twitter/X, Instagram, Doubao (video/image), **Jimeng (AI video/image)**, Oasis, Video Account, Pear Video, Quanmin Live, Pipi Funny, Pipi Shrimp, Zuiyou, and Dola.
 
 ## Repository
 
@@ -126,12 +126,12 @@ This is a **cross-platform video/image parsing plugin** developed for the Koishi
 | Config | Type | Default | Description |
 |------|------|------|------|
 | `primaryApiUrl` | string | `https://api-new.ifphp.com/api/svparse` | Main aggregation API URL |
-| `platformDedicatedFirst` | object | all disabled | Prefer dedicated APIs for `bilibili`, `douyin`, `kuaishou`, `wechat_channel`, `doubao`, `pipigx`, and `jimeng` |
+| `platformDedicatedFirst` | object | all disabled | Prefer dedicated APIs for `bilibili`, `douyin`, `kuaishou`, `wechat_channel`, `doubao`, `pipigx`, `jimeng`, and `dola` |
 | `customApis` | array | `[]` | Override built-in platform APIs |
 | `customPlatforms` | array | `[]` | Add custom platforms |
 | `globalFieldMapping` | string | preset | Global field mapping JSON |
 
-> Dedicated APIs are available for: `bilibili`, `douyin`, `kuaishou`, `wechat_channel`, `doubao`, `pipigx`, `jimeng`.
+> Dedicated APIs are available for: `bilibili`, `douyin`, `kuaishou`, `wechat_channel`, `doubao`, `pipigx`, `jimeng`, `dola`. Douyin uses `svparse` → `dyjx` → `dydj`; when an earlier endpoint returns only a `video_id`, `zjyh` is tried last to resolve the original-quality media URL.
 
 ### UI Text
 
@@ -173,6 +173,7 @@ The plugin can automatically identify links from these platforms. All patterns s
 |------|------|------|
 | Bilibili | `bilibili.com/video/`, `b23.tv`, `bili*.cn`, `b23.wtf`, `b2233.cn` | Video |
 | Douyin | `douyin.com/video/`, `v.douyin.com` | Short video, image, live photo |
+| Dola | `dola.com/thread/` | Short video |
 | Kuaishou | `kuaishou.com/short-video/`, `v.kuaishou.com`, `kuaishou.com/f/` | Short video, image |
 | Xiaohongshu | `xiaohongshu.com/discovery/item/`, `xhslink.com`, `xiaohongshu.com/explore/`, `xiaohongshu.com/board/` | Image, video |
 | Weibo | `weibo.com/<id>/`, `video.weibo.com/show`, `t.cn`, `m.weibo.cn` | Video, image |
