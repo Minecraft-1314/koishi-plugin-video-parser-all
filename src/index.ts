@@ -4,10 +4,12 @@ import { Config } from './config'
 import type { PluginConfig } from './config'
 import { LinkMatch, ParsedData, CustomPlatformConfig } from './types'
 import { SimpleLRUCache, ConcurrencyLimiter, delay, getErrorMessage, parseFieldMapping } from './utils'
-import { logger, debugLog, setDebugEnabled } from './logger'
+import { logger, debugLog, setDebugEnabled, elapsedSince, describeContent, maskSecret } from './logger'
 import { buildCustomLinkRules, linkTypeParser, extractAllUrlsFromMessage } from './link-rules'
 import { processSingleUrl } from './service/parser'
 import { DeduplicationManager } from './dedupe'
+import { buildMergeKinds, buildSendPlan, groupSendPlan } from './send-plan'
+import type { SendKind, SendPlanItem } from './send-plan'
 
 export { Config }
 export const name = 'video-parser-all'
@@ -17,9 +19,36 @@ interface SendResult {
   uncertain: boolean
 }
 
+const SEND_INTERVAL_MS = 300
+const IMAGE_SEND_INTERVAL_MS = 1000
+const MAX_FORWARD_NODES = 50
+
 export function apply(ctx: Context, config: PluginConfig) {
   setDebugEnabled(config.debug || false)
-  debugLog('INFO', 'plugin start')
+  debugLog('INFO', 'plugin start', {
+    apiKey: maskSecret(config.apiKey),
+    authMode: config.authMode,
+    enableForward: config.enableForward,
+    mergeKinds: [...buildMergeKinds(config)],
+    showImageText: config.showImageText,
+    showCoverImage: config.showCoverImage,
+    showAuthorAvatar: config.showAuthorAvatar,
+    showMusicCover: config.showMusicCover,
+    showVideo: config.showVideo,
+    showVideoFile: config.showVideoFile,
+    showMusicVoice: config.showMusicVoice,
+    musicVoiceScope: config.musicVoiceScope,
+    showMusicVoiceFile: config.showMusicVoiceFile,
+    maxConcurrent: config.maxConcurrent,
+    timeout: config.timeout,
+    videoSendTimeout: config.videoSendTimeout,
+    retryTimes: config.retryTimes,
+    retryInterval: config.retryInterval,
+    cacheTTL: config.cacheTTL,
+    deduplicationInterval: config.deduplicationInterval,
+  })
+  const disabledPlatforms = Object.entries(config.platformEnabled || {}).filter(([, enabled]) => !enabled).map(([type]) => type)
+  debugLog('INFO', `已关闭的平台: ${disabledPlatforms.length ? disabledPlatforms.join(', ') : '无'}`)
   if (!config.apiKey) {
     logger.warn('未配置 api-new.ifphp.com API Key，所有解析请求可能失败。请在插件配置中填写 apiKey。')
   }
@@ -42,6 +71,7 @@ export function apply(ctx: Context, config: PluginConfig) {
     customHeaders: config.customHeaders,
     primaryApiUrl: config.primaryApiUrl,
     cacheTTL,
+    apiKey: config.apiKey || '',
   }
 
   function contentFingerprint(p: ParsedData): string {
@@ -65,7 +95,7 @@ export function apply(ctx: Context, config: PluginConfig) {
     const shortUrl = url.length > 80 ? url.slice(0, 80) + '...' : url
     const tip = getText('deduplicationTipText')
       .replace(/\$\{url\}/g, shortUrl)
-      .replace(/\$\{interval\}/g, String(config.deduplicationInterval))
+      .replace(/\$\{interval\}/g, String(dedupInterval))
     await sendSafe(session, tip, getText('deduplicationTipText'))
   }
 
@@ -160,6 +190,8 @@ export function apply(ctx: Context, config: PluginConfig) {
       const maxRetries = customRetries ?? config.retryTimes ?? 3
       const retryDelay = config.retryInterval ?? 1000
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const startedAt = Date.now()
+        debugLog('DEBUG', `发送中 第 ${attempt + 1}/${maxRetries + 1} 次`, describeContent(content))
         try {
           if (config.videoSendTimeout > 0) {
             let timer: NodeJS.Timeout | undefined
@@ -174,9 +206,11 @@ export function apply(ctx: Context, config: PluginConfig) {
           } else {
             await session.send(content)
           }
+          debugLog('DEBUG', '发送成功', elapsedSince(startedAt), describeContent(content))
           return { success: true, uncertain: false }
         } catch (err) {
           const errMsg = getErrorMessage(err)
+          debugLog('DEBUG', '发送异常', elapsedSince(startedAt), errMsg, describeContent(content))
           if (errMsg === '发送超时') {
             debugLog('WARN', `发送超时（消息可能仍在发送中）: ${errMsg}`)
             return { success: false, uncertain: true }
@@ -200,19 +234,61 @@ export function apply(ctx: Context, config: PluginConfig) {
     }
   }
 
-  async function sendMedia(session: any, url: string, type: 'image' | 'video' | 'audio', showFile: boolean) {
-    if (!url) return
-    if (!showFile) {
-      await sendSafe(session, `${type === 'audio' ? '音乐' : type === 'video' ? '视频' : '图片'}链接：${url}`, `${type}链接`)
+  function createMediaElement(mediaType: 'image' | 'video' | 'audio', url: string) {
+    if (mediaType === 'audio') return h.audio(url)
+    if (mediaType === 'video') return h.video(url)
+    return h.image(url)
+  }
+
+  async function sendPlanItem(session: any, item: SendPlanItem): Promise<void> {
+    const startedAt = Date.now()
+    debugLog('INFO', `[发送] ${item.label}`, { url: item.url, text: item.text ? item.text.slice(0, 120) : undefined })
+    if (item.text) {
+      await sendSafe(session, item.text, `${item.label}文字`)
+      if (item.url) await delay(SEND_INTERVAL_MS)
+    }
+    if (!item.url || !item.mediaType) {
+      debugLog('INFO', `[发送完成] ${item.label}`, elapsedSince(startedAt))
       return
     }
+    const fallback = `${item.label}链接：${item.url}`
     try {
-      const result = await sendWithTimeout(session, type === 'audio' ? h.audio(url) : type === 'video' ? h.video(url) : h.image(url))
-      if (!result.success && !result.uncertain) {
-        await sendSafe(session, `${type === 'audio' ? '音乐' : type === 'video' ? '视频' : '图片'}链接：${url}`, `${type}降级`)
+      const result = await sendWithTimeout(session, createMediaElement(item.mediaType, item.url))
+      if (!result.success && !result.uncertain) await sendSafe(session, fallback, `${item.label}降级`)
+      debugLog('INFO', `[发送完成] ${item.label}`, elapsedSince(startedAt), { success: result.success, uncertain: result.uncertain })
+    } catch (err) {
+      debugLog('WARN', `[发送失败] ${item.label}`, elapsedSince(startedAt), getErrorMessage(err))
+      await sendSafe(session, fallback, `${item.label}降级`)
+    }
+  }
+
+  function buildPlanNode(session: any, item: SendPlanItem, botName: string) {
+    const content: any[] = []
+    if (item.text) content.push(h.text(item.text))
+    if (item.url && item.mediaType) content.push(createMediaElement(item.mediaType, item.url))
+    return buildForwardNode(session, content, botName)
+  }
+
+  function resolveMergeKinds(session: any): Set<SendKind> {
+    if (!config.enableForward) return new Set<SendKind>()
+    if (session.platform !== 'onebot' && session.platform !== 'satori') return new Set<SendKind>()
+    return buildMergeKinds(config)
+  }
+
+  async function sendForwardSegment(session: any, items: SendPlanItem[], botName: string): Promise<void> {
+    for (let start = 0; start < items.length; start += MAX_FORWARD_NODES) {
+      const chunk = items.slice(start, start + MAX_FORWARD_NODES)
+      try {
+        const nodes = chunk.map(item => buildPlanNode(session, item, botName))
+        const result = await sendWithTimeout(session, h('message', { forward: true }, nodes), config.retryTimes)
+        if (!result.success && !result.uncertain) throw new Error('合并转发发送失败')
+      } catch (err) {
+        debugLog('WARN', `合并转发失败，降级逐条发送: ${getErrorMessage(err)}`)
+        for (const item of chunk) {
+          await sendPlanItem(session, item)
+          await delay(SEND_INTERVAL_MS)
+        }
       }
-    } catch {
-      await sendSafe(session, `${type === 'audio' ? '音乐' : type === 'video' ? '视频' : '图片'}链接：${url}`, `${type}降级`)
     }
   }
 
@@ -227,18 +303,20 @@ export function apply(ctx: Context, config: PluginConfig) {
   }
 
   async function flush(session: any, matches: LinkMatch[]) {
-    debugLog('INFO', `开始解析 ${matches.length} 个链接`)
+    const flushStartedAt = Date.now()
+    debugLog('INFO', `开始解析 ${matches.length} 个链接`, matches.map(match => ({ type: match.type, url: match.url })))
     const items: { text: string; parsed: ParsedData; index: number }[] = []
     const errors: { item: string; index: number }[] = []
     const limiter = new ConcurrencyLimiter(config.maxConcurrent || 3)
 
     const promises = matches.map(async (match, index) => {
       await limiter.acquire()
+      const itemStartedAt = Date.now()
       try {
-        if (config.enableDeduplication !== false && config.deduplicationInterval > 0) {
+        if (config.enableDeduplication !== false && dedupInterval > 0) {
           const lastTime = dedupCache.get(match.url)
-          if (lastTime && Date.now() - lastTime < config.deduplicationInterval * 1000) {
-            debugLog('INFO', `跳过重复链接: ${match.url}`)
+          if (lastTime && Date.now() - lastTime < dedupInterval * 1000) {
+            debugLog('INFO', `跳过重复链接: ${match.url}`, { seenMs: Date.now() - lastTime, intervalMs: dedupInterval * 1000 })
             await sendDeduplicationTip(session, match.url)
             return
           }
@@ -246,14 +324,22 @@ export function apply(ctx: Context, config: PluginConfig) {
 
         debugLog('INFO', `解析链接: ${match.url} (${match.type})`)
         const platformConf = getPlatformConfig(match.type)
+        debugLog('DEBUG', `平台配置 ${match.type}`, {
+          apiUrls: platformConf.apiUrls,
+          dedicatedFirst: platformConf.dedicatedFirst,
+          apiKey: maskSecret(platformConf.apiKey),
+          authHeaderType: platformConf.authHeaderType,
+          fieldMappingKeys: platformConf.fieldMapping ? Object.keys(platformConf.fieldMapping).length : 0,
+          videoIdApiUrl: platformConf.videoIdApiUrl,
+        })
         const result = await processSingleUrl(http, requestConfig, match.url, match.type, platformConf)
 
         if (result.success) {
-          if (config.enableDeduplication !== false && config.deduplicationInterval > 0) {
+          if (config.enableDeduplication !== false && dedupInterval > 0) {
             const fp = contentFingerprint(result.data.parsed)
             const lastDedup = contentDedupCache.get(fp)
-            if (lastDedup && Date.now() - lastDedup < config.deduplicationInterval * 1000) {
-              debugLog('INFO', `跳过重复内容: ${match.url}`)
+            if (lastDedup && Date.now() - lastDedup < dedupInterval * 1000) {
+              debugLog('INFO', `跳过重复内容: ${match.url}`, { fingerprint: fp })
               dedupCache.set(match.url, Date.now())
               await sendDeduplicationTip(session, match.url)
               return
@@ -261,8 +347,20 @@ export function apply(ctx: Context, config: PluginConfig) {
             contentDedupCache.set(fp, Date.now())
             dedupCache.set(match.url, Date.now())
           }
+          debugLog('INFO', `解析完成: ${match.url}`, elapsedSince(itemStartedAt), {
+            type: result.data.parsed.type,
+            title: result.data.parsed.title,
+            hasVideo: Boolean(result.data.parsed.video),
+            images: result.data.parsed.images.length,
+            livePhoto: result.data.parsed.live_photo.length,
+            hasMusic: Boolean(result.data.parsed.music.url),
+            hasMusicCover: Boolean(result.data.parsed.music.cover),
+            hasAvatar: Boolean(result.data.parsed.avatar),
+            hasCover: Boolean(result.data.parsed.cover),
+          })
           items.push({ ...result.data, index })
         } else {
+          debugLog('WARN', `解析失败: ${match.url}`, elapsedSince(itemStartedAt), result.msg)
           const displayUrl = match.url.length > 80 ? match.url.slice(0, 80) + '...' : match.url
           const item = getText('parseErrorItemFormat')
             .replace(/\$\{url\}/g, displayUrl)
@@ -287,153 +385,25 @@ export function apply(ctx: Context, config: PluginConfig) {
     if (!orderedItems.length) return
 
     const totalItems = orderedItems.length
-    const enableForward = config.enableForward && (session.platform === 'onebot' || session.platform === 'satori')
     const botName = config.botName || '视频解析机器人'
+    const mergeKinds = resolveMergeKinds(session)
 
-    if (enableForward) {
-      const forwardMessages: any[] = []
-      for (let i = 0; i < orderedItems.length; i++) {
-        const item = orderedItems[i]
-        const p = item.parsed
-        const textWithIndex = totalItems > 1 ? `【${i + 1}/${totalItems}】\n${item.text}` : item.text
-        let text = textWithIndex
+    debugLog('INFO', '开始发送', { items: totalItems, mergeKinds: [...mergeKinds] })
 
-        if (config.showAuthorAvatar && p.avatar && config.showAuthorAvatarText) {
-          text = text ? text + '\n' + (config.authorAvatarText || '作者头像：') : (config.authorAvatarText || '作者头像：')
-        }
-        if (text && config.showImageText) {
-          forwardMessages.push(buildForwardNode(session, text, botName))
-        }
-
-        if (config.showAuthorAvatar && p.avatar) {
-          if (config.showAuthorAvatarFile) {
-            forwardMessages.push(buildForwardNode(session, h.image(p.avatar), botName))
-          } else {
-            forwardMessages.push(buildForwardNode(session, `作者头像链接：${p.avatar}`, botName))
-          }
-        }
-
-        if (p.cover && config.showCoverImage && p.type !== 'live_photo' && p.type !== 'image') {
-          if (config.showCoverText) {
-            forwardMessages.push(buildForwardNode(session, config.coverText || '封面：', botName))
-          }
-          if (config.showCoverFile) {
-            forwardMessages.push(buildForwardNode(session, h.image(p.cover), botName))
-          } else {
-            forwardMessages.push(buildForwardNode(session, `封面链接：${p.cover}`, botName))
-          }
-        }
-
-        if (config.showMusicCover && p.music.cover) {
-          forwardMessages.push(buildForwardNode(session, h.image(p.music.cover), botName))
-        }
-
-        if (p.type === 'live_photo' && p.live_photo?.length) {
-          for (const lp of p.live_photo) {
-            if (config.showImageFileNew) {
-              forwardMessages.push(buildForwardNode(session, h.image(lp.image), botName))
-            } else {
-              forwardMessages.push(buildForwardNode(session, `图片链接：${lp.image}`, botName))
-            }
-          }
-        } else if (p.type === 'image') {
-          const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? [])
-          for (const imgUrl of imageUrls) {
-            if (config.showImageFileNew) {
-              forwardMessages.push(buildForwardNode(session, h.image(imgUrl), botName))
-            } else {
-              forwardMessages.push(buildForwardNode(session, `图片链接：${imgUrl}`, botName))
-            }
-          }
-        }
-
-        if (p.video && p.type !== 'live_photo') {
-          if (config.showVideoFile) {
-            forwardMessages.push(buildForwardNode(session, h.video(p.video), botName))
-          } else {
-            forwardMessages.push(buildForwardNode(session, `视频链接：${p.video}`, botName))
-          }
-        }
-
-        if (config.showMusicVoice && p.music.url) {
-          if (config.showMusicVoiceFile) {
-            forwardMessages.push(buildForwardNode(session, h.audio(p.music.url), botName))
-          } else {
-            forwardMessages.push(buildForwardNode(session, `音乐链接：${p.music.url}`, botName))
-          }
-        }
-      }
-
-      const MAX_NODES = 50
-      for (let i = 0; i < forwardMessages.length; i += MAX_NODES) {
-        const batch = forwardMessages.slice(i, i + MAX_NODES)
-        try {
-          const result = await sendWithTimeout(session, h('message', { forward: true }, batch), config.retryTimes)
-          if (!result.success && !result.uncertain) throw new Error('合并转发发送失败')
-        } catch (err) {
-          debugLog('ERROR', '合并转发失败，降级逐条发送:', err)
-          for (const node of batch) {
-            const content = (node as any).__vpContent ?? node.data?.content ?? node.children
-            if (Array.isArray(content)) {
-              for (const c of content) {
-                await sendSafe(session, c, '合并转发降级')
-                await delay(200)
-              }
-            } else {
-              await sendSafe(session, content, '合并转发降级')
-            }
-            await delay(300)
-          }
-        }
-      }
-    } else {
-      for (let i = 0; i < orderedItems.length; i++) {
-        const item = orderedItems[i]
-        const p = item.parsed
-        const textWithIndex = totalItems > 1 ? `【${i + 1}/${totalItems}】\n${item.text}` : item.text
-        let text = textWithIndex
-        if (text && config.showImageText) {
-          await sendSafe(session, text, '文字内容')
-          await delay(300)
-        }
-        if (config.showAuthorAvatar && p.avatar) {
-          if (config.showAuthorAvatarText) await sendSafe(session, config.authorAvatarText || '作者头像：', '作者头像文字')
-          await sendMedia(session, p.avatar, 'image', config.showAuthorAvatarFile)
-          await delay(300)
-        }
-        if (p.cover && config.showCoverImage && p.type !== 'live_photo' && p.type !== 'image') {
-          if (config.showCoverText) await sendSafe(session, config.coverText || '封面：', '封面文字')
-          await sendMedia(session, p.cover, 'image', config.showCoverFile)
-          await delay(300)
-        }
-        if (config.showMusicCover && p.music.cover) {
-          await sendMedia(session, p.music.cover, 'image', true)
-          await delay(300)
-        }
-        if (p.type === 'live_photo' && p.live_photo?.length) {
-          for (const lp of p.live_photo) {
-            await sendMedia(session, lp.image, 'image', config.showImageFileNew)
-            await delay(500)
-          }
-        } else if (p.type === 'image') {
-          const imageUrls = p.images?.length ? p.images : (p.live_photo?.map(lp => lp.image) ?? [])
-          for (let j = 0; j < imageUrls.length; j++) {
-            debugLog('INFO', `[发送] 图片 ${j + 1}/${imageUrls.length}`)
-            await sendMedia(session, imageUrls[j], 'image', config.showImageFileNew)
-            await delay(1000)
-          }
-        }
-        if (p.video && p.type !== 'live_photo') {
-          await sendMedia(session, p.video, 'video', config.showVideoFile)
-          await delay(300)
-        }
-        if (config.showMusicVoice && p.music.url) {
-          await sendMedia(session, p.music.url, 'audio', config.showMusicVoiceFile)
-          await delay(300)
-        }
+    for (let i = 0; i < orderedItems.length; i++) {
+      const item = orderedItems[i]
+      const text = totalItems > 1 ? `【${i + 1}/${totalItems}】\n${item.text}` : item.text
+      const plan = buildSendPlan(item.parsed, config, text)
+      debugLog('INFO', `[计划] 第 ${i + 1}/${totalItems} 项`, { type: item.parsed.type, kinds: plan.map(entry => entry.kind), text: text.slice(0, 120) })
+      for (const segment of groupSendPlan(plan, mergeKinds)) {
+        debugLog('INFO', `[分段] ${segment.merged ? '合并转发' : '单独发送'}`, segment.items.map(entry => ({ kind: entry.kind, url: entry.url, text: entry.text ? entry.text.slice(0, 60) : undefined })))
+        if (segment.merged) await sendForwardSegment(session, segment.items, botName)
+        else await sendPlanItem(session, segment.items[0])
+        const lastItem = segment.items[segment.items.length - 1]
+        await delay(lastItem.mediaType === 'image' ? IMAGE_SEND_INTERVAL_MS : SEND_INTERVAL_MS)
       }
     }
-    debugLog('INFO', '处理完成')
+    debugLog('INFO', '处理完成', elapsedSince(flushStartedAt))
   }
 
   const customRules = buildCustomLinkRules(config.customPlatforms || [])
@@ -443,9 +413,8 @@ export function apply(ctx: Context, config: PluginConfig) {
     headers: {
       'User-Agent': config.userAgent,
       'Referer': 'https://www.baidu.com/',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        ...(config.apiKey && config.authMode !== 'query' ? { 'X-API-Key': config.apiKey } : {})
-      }
+      'Content-Type': 'application/x-www-form-urlencoded',
+    }
   }
   if (proxyConfig.enabled && proxyConfig.host) {
     axiosConfig.proxy = {
@@ -486,15 +455,29 @@ export function apply(ctx: Context, config: PluginConfig) {
       if (!matches.length) return
       const enabledMatches = matches.filter(match => isPlatformEnabled(match.type))
       if (!enabledMatches.length) return
-      debugLog('INFO', `检测到 ${enabledMatches.length} 个链接`)
+      debugLog('DEBUG', '消息命中链接', {
+        platform: session.platform,
+        selfId: session.selfId,
+        userId: session.userId,
+        channelId: session.channelId,
+        guildId: session.guildId,
+        messageId: session.messageId,
+        elements: session.elements?.map(elem => elem.type),
+      })
+      debugLog('INFO', `检测到 ${enabledMatches.length} 个链接`, enabledMatches.map(match => ({ type: match.type, url: match.url })), {
+        disabledPlatforms: matches.filter(match => !isPlatformEnabled(match.type)).map(match => match.type),
+      })
       if (config.showWaitingTip) {
+        const waitingContent = session.messageId ? [h.quote(session.messageId), h.text(getText('waitingTipText'))] : getText('waitingTipText')
         try {
-          await sendWithTimeout(session, [h.quote(session.messageId), h.text(getText('waitingTipText'))])
+          await sendWithTimeout(session, waitingContent)
         } catch (e) {
           debugLog('WARN', '等待提示发送失败:', e)
         }
       }
       await flush(session, enabledMatches)
+    } catch (err) {
+      debugLog('ERROR', '消息处理异常', getErrorMessage(err))
     } finally {
       if (messageId) {
         processingMessages.delete(messageId)
@@ -510,11 +493,18 @@ export function apply(ctx: Context, config: PluginConfig) {
     const enabledMatches = matches.filter(match => isPlatformEnabled(match.type))
     if (!enabledMatches.length) { await sendWithTimeout(session, getText('unsupportedPlatformText')); return }
     if (config.showWaitingTip) {
+      const waitingContent = session?.messageId ? [h.quote(session.messageId), h.text(getText('waitingTipText'))] : getText('waitingTipText')
       try {
-        await sendWithTimeout(session, [h.quote(session?.messageId), h.text(getText('waitingTipText'))])
-      } catch {}
+        await sendWithTimeout(session, waitingContent)
+      } catch (e) {
+        debugLog('WARN', '等待提示发送失败:', e)
+      }
     }
-    await flush(session, enabledMatches)
+    try {
+      await flush(session, enabledMatches)
+    } catch (err) {
+      debugLog('ERROR', '指令解析异常', getErrorMessage(err))
+    }
   })
 
   ctx.on('dispose', () => {

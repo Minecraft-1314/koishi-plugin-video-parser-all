@@ -13,7 +13,7 @@ Please read first:
 
 | Document | Description |
 |------|------|
-| [CHANGELOG-v1.7.5.md](docs/CHANGELOG-v1.7.5.md) | v1.7.5 changelog |
+| [CHANGELOG-v1.7.6.md](docs/CHANGELOG-v1.7.6.md) | v1.7.6 changelog |
 | [API_ADDRESSES.md](docs/API_ADDRESSES.md) | API parsing addresses for the main gateway and platform-specific endpoints |
 | [COMPATIBILITY.md](docs/COMPATIBILITY.md) | API field compatibility notes, including all supported field aliases |
 | [LINK_RULES.md](docs/LINK_RULES.md) | Link matching rules for all supported platforms (regex) |
@@ -73,15 +73,21 @@ This is a **cross-platform video/image parsing plugin** developed for the Koishi
 | `showAuthorAvatarFile` | boolean | `true` | Send the avatar as an image; disable to send the link only |
 | `showAuthorAvatarText` | boolean | `true` | Show a text hint before the author avatar; appended to the text message |
 | `authorAvatarText` | string | `作者头像：` | Text shown before the author avatar |
-| `showMusicCover` | boolean | `true` | Send the music cover image |
+| `showMusicCover` | boolean | `false` | Send the music cover image |
+| `showMusicCoverText` | boolean | `true` | Send a text label before the music cover |
+| `musicCoverText` | string | `音乐封面：` | Label shown before the music cover |
+| `showVideo` | boolean | `true` | Send the video |
 | `showVideoFile` | boolean | `true` | Send videos as video files; disable to send links only |
 
-### Music Voice
+### Music Link
 
 | Config | Type | Default | Description |
 |------|------|------|------|
-| `showMusicVoice` | boolean | `false` | Send music links as voice messages |
+| `showMusicVoice` | boolean | `false` | Send the music link |
+| `musicVoiceScope` | string | `all` | Send scope: `all`, `video` (videos only) or `image` (image/text posts only) |
 | `showMusicVoiceFile` | boolean | `true` | Send music as a voice file; disable to send the link only |
+
+> With `showMusicVoice` on, `musicVoiceScope` decides which content carries the music and defaults to everything; when the switch is off nothing is sent.
 
 ### Performance and Limits
 
@@ -112,6 +118,29 @@ This is a **cross-platform video/image parsing plugin** developed for the Koishi
 | `retryTimes` | number | `3` | Retry count |
 | `retryInterval` | number | `1000` | Retry interval (ms) |
 | `enableForward` | boolean | `false` | Enable merged forwarding (OneBot/Satori) |
+| `forwardMergeText` | boolean | `true` | Merge text into the forward node |
+| `forwardMergeImage` | boolean | `true` | Merge content images into the forward node |
+| `forwardMergeCover` | boolean | `true` | Merge the cover into the forward node |
+| `forwardMergeAvatar` | boolean | `true` | Merge the author avatar into the forward node |
+| `forwardMergeMusicCover` | boolean | `true` | Merge the music cover into the forward node |
+| `forwardMergeVideo` | boolean | `false` | Merge the video into the forward node |
+| `forwardMergeMusic` | boolean | `false` | Merge the music into the forward node |
+
+> Types that are not enabled are sent on their own; a segment holding a single item is also sent directly instead of a forward card.
+
+### Debug Logging
+
+With `debug` enabled the plugin logs the full path, which makes over-sending, missing media and parse failures traceable:
+
+- configuration snapshot at startup (API keys masked) and the list of disabled platforms
+- messages that contain a link: platform, bot, user, channel, message id and element types (chat text is never logged)
+- link detection results, plus links filtered out by platform switches
+- platform configuration and API call order for each link, request URLs with timings, HTTP status and business codes
+- parsed summary: type, title, and whether video, images, cover, avatar and music are present
+- the send plan and segmentation decision: which types are merged and which are sent on their own
+- every send with its content summary, duration and result
+
+`WARN` and `ERROR` lines are always printed regardless of `debug`; `DEBUG` and `INFO` lines only appear when `debug` is on. A single log line longer than 2000 characters is truncated with its total length noted.
 
 ### Cache and Deduplication
 
@@ -215,6 +244,8 @@ The plugin can automatically identify links from these platforms. All patterns s
 | linyves | Suggested treating Live Photo as normal images; adopted |
 | linyves | Reported author avatar being sent after parsing; fixed |
 | GSRealms | Reported duplicate video parsing; fixed |
+| a255266 | Suggested merge-forward filtering; adopted |
+| a255266 | Suggested music link send scope; adopted |
 | JH-Ahua | API support |
 | shangxue | Inspiration |
 

@@ -12,7 +12,7 @@
 
 | 文档 | 说明 |
 |------|------|
-| [CHANGELOG-v1.7.5.md](docs/CHANGELOG-v1.7.5.md) | v1.7.5 版本更新日志 |
+| [CHANGELOG-v1.7.6.md](docs/CHANGELOG-v1.7.6.md) | v1.7.6 版本更新日志 |
 | [API_ADDRESSES.md](docs/API_ADDRESSES.md) | 插件 API 解析地址一览（主 API 与各平台专属接口） |
 | [COMPATIBILITY.md](docs/COMPATIBILITY.md) | API 字段兼容性说明（支持的所有字段别名） |
 | [LINK_RULES.md](docs/LINK_RULES.md) | 所有平台的链接匹配规则（正则表达式） |
@@ -72,15 +72,21 @@
 | `showAuthorAvatarFile` | boolean | `true` | 作者头像图片是否以图片形式发送（关闭则只发送链接） |
 | `showAuthorAvatarText` | boolean | `true` | 作者头像前显示文字提示（将追加到文字消息末尾） |
 | `authorAvatarText` | string | `作者头像：` | 作者头像前显示的文字 |
-| `showMusicCover` | boolean | `true` | 发送音乐封面图片 |
+| `showMusicCover` | boolean | `false` | 发送音乐封面图片 |
+| `showMusicCoverText` | boolean | `true` | 音乐封面前显示文字提示 |
+| `musicCoverText` | string | `音乐封面：` | 音乐封面前显示的文字 |
+| `showVideo` | boolean | `true` | 发送视频 |
 | `showVideoFile` | boolean | `true` | 视频是否以视频形式发送（关闭则只发送链接） |
 
-### 音乐语音
+### 音乐链接
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |------|------|------|------|
-| `showMusicVoice` | boolean | `false` | 音乐链接以语音发送 |
+| `showMusicVoice` | boolean | `false` | 发送音乐链接 |
+| `musicVoiceScope` | string | `all` | 发送范围：`all` 全部、`video` 仅视频、`image` 仅图文 |
 | `showMusicVoiceFile` | boolean | `true` | 音乐链接是否以语音形式发送（关闭则只发送链接） |
+
+> 开启「发送音乐链接」后按「发送范围」决定哪些内容带音乐，默认全部；关闭则完全不发送。
 
 ### 性能与限制
 
@@ -111,6 +117,29 @@
 | `retryTimes` | number | `3` | 重试次数 |
 | `retryInterval` | number | `1000` | 重试间隔（ms） |
 | `enableForward` | boolean | `false` | 合并转发（OneBot/Satori） |
+| `forwardMergeText` | boolean | `true` | 文字参与合并转发 |
+| `forwardMergeImage` | boolean | `true` | 作品图片参与合并转发 |
+| `forwardMergeCover` | boolean | `true` | 封面参与合并转发 |
+| `forwardMergeAvatar` | boolean | `true` | 作者头像参与合并转发 |
+| `forwardMergeMusicCover` | boolean | `true` | 音乐封面参与合并转发 |
+| `forwardMergeVideo` | boolean | `false` | 视频参与合并转发 |
+| `forwardMergeMusic` | boolean | `false` | 音乐参与合并转发 |
+
+> 未勾选的类型单独发送；合并段里只剩一条时也直接单独发送，不再套一层转发。
+
+### 调试日志
+
+打开 `debug` 后日志会记录完整链路，便于定位多发、漏发和解析异常：
+
+- 启动时的配置快照（API Key 打码）与已关闭平台列表
+- 命中链接的消息：平台、机器人、用户、频道、消息 ID、元素类型（不记录聊天正文）
+- 链接识别结果，以及被平台开关过滤掉的链接
+- 每个链接的平台配置、API 调用顺序、每次请求的地址与耗时、HTTP 状态、业务码
+- 解析结果摘要：类型、标题，以及是否有视频 / 图片 / 封面 / 头像 / 音乐
+- 发送计划与分段决策：哪些类型合并、哪些单独发送
+- 每次发送的内容摘要、耗时与成功状态
+
+`WARN` 和 `ERROR` 不受 `debug` 开关影响始终输出，`DEBUG` 和 `INFO` 只在开启 `debug` 时输出；单条日志超过 2000 字符会截断并标注总长度。
 
 ### 缓存与去重
 
@@ -210,6 +239,7 @@
 | dzt2008 + Apricityx | 提交 Bug-会对非支持视频平台 URL 进行误解析-已修复 |
 | linyves | 提交 Bug-小红书图集重复发送封面-已修复；提交 Bug-话题显示异常-已修复；提交建议-Live Photo 全部按普通图片处理-已采纳；提交 Bug-解析后会把作者头像一起发送-已修复 |
 | GSRealms | 提交 Bug-视频重复解析-已修复 |
+| a255266 | 提交功能建议-合并转发增加筛选功能-已采纳；提交功能建议-音乐链接发送范围功能-已采纳 |
 | JH-Ahua | API 支持 |
 | shangxue | 灵感来源 |
 

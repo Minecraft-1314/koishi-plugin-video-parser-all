@@ -141,6 +141,8 @@ export function parseApiResponse(raw: any, maxDescLen: number, fieldMapping?: Re
     url: /[\s\[\]]/.test(normalizeUrl(musicUrlRaw)) ? '' : normalizeUrl(musicUrlRaw),
   }
 
+  if (music.cover && (music.cover === cover || music.cover === avatar)) music.cover = ''
+
   const statisticsObj = getFirst(data, ['statistics', 'stats', 'metrics', 'counts', 'extra'])
   const statPath = (obj: any, names: string[]) => {
     if (obj && typeof obj === 'object') {

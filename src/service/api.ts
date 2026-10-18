@@ -2,7 +2,7 @@ import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios'
 import type { ApiItem, ParsedData } from '../types'
 import { parseApiResponse } from '../parser'
 import { delay, getFirst } from '../utils'
-import { debugLog } from '../logger'
+import { debugLog, elapsedSince, isDebugEnabled, maskSecret } from '../logger'
 
 interface CacheEntry {
   data: ParsedData
@@ -17,6 +17,32 @@ interface ApiRequest {
   customHeaderName?: string
   fieldMapping?: Record<string, string>
   videoIdParam?: string
+}
+
+interface PlatformConf {
+  apiUrl?: string | null
+  apiUrls?: string[]
+  dedicatedFirst?: boolean
+  apiKey?: string
+  authHeaderType?: string
+  customHeaderName?: string
+  fieldMapping?: Record<string, string>
+  customProxy?: any
+  videoIdApiUrl?: string
+  videoIdParam?: string
+}
+
+interface FetchConfig {
+  maxDescLength: number
+  authMode?: string
+  timeout?: number
+  userAgent?: string
+  retryTimes?: number
+  retryInterval?: number
+  customHeaders?: { name: string; value: string }[]
+  primaryApiUrl?: string
+  cacheTTL?: number
+  apiKey?: string
 }
 
 const cacheStores = new WeakMap<AxiosInstance, Map<string, CacheEntry>>()
@@ -47,21 +73,7 @@ function getResponseMessage(data: any, statusField: any): string {
   return `API返回错误码: ${String(statusField ?? 'unknown')}`
 }
 
-function buildApiList(
-  type: string,
-  primaryApi: string,
-  platformConf?: {
-    apiUrl?: string | null
-    apiUrls?: string[]
-    dedicatedFirst?: boolean
-    apiKey?: string
-    authHeaderType?: string
-    customHeaderName?: string
-    fieldMapping?: Record<string, string>
-    videoIdApiUrl?: string
-    videoIdParam?: string
-  }
-): ApiRequest[] {
+function buildApiList(type: string, primaryApi: string, platformConf: PlatformConf | undefined, globalApiKey: string | undefined): ApiRequest[] {
   const { apiUrl, apiUrls, dedicatedFirst, apiKey, authHeaderType, customHeaderName, fieldMapping, videoIdApiUrl, videoIdParam } = platformConf || {}
   const configuredUrls = Array.from(new Set((apiUrls?.length ? apiUrls : apiUrl ? [apiUrl] : []).filter(Boolean)))
   const dedicatedItems: ApiRequest[] = configuredUrls.map((url, index) => ({
@@ -73,7 +85,14 @@ function buildApiList(
     fieldMapping,
   }))
   if (type.startsWith('custom_')) return dedicatedItems
-  const primaryItem: ApiItem = { url: primaryApi, label: '默认主API', fieldMapping }
+  const primaryItem: ApiItem = {
+    url: primaryApi,
+    label: '默认主API',
+    apiKey: globalApiKey,
+    authHeaderType: 'X-API-Key',
+    customHeaderName: 'X-API-Key',
+    fieldMapping,
+  }
   const orderedItems = dedicatedFirst ? [...dedicatedItems, primaryItem] : [primaryItem, ...dedicatedItems]
   const videoIdItem: ApiRequest[] = videoIdApiUrl && videoIdParam ? [{
     url: videoIdApiUrl,
@@ -87,52 +106,59 @@ function buildApiList(
   return Array.from(new Map([...orderedItems, ...videoIdItem].map(item => [`${item.url}::${item.videoIdParam || ''}`, item])).values())
 }
 
-export async function fetchApi(
-  http: AxiosInstance,
-  config: {
-    maxDescLength: number
-    authMode?: string
-    timeout?: number
-    userAgent?: string
-    retryTimes?: number
-    retryInterval?: number
-    customHeaders?: { name: string; value: string }[]
-    primaryApiUrl?: string
-    cacheTTL?: number
-  },
-  url: string,
-  type: string,
-  platformConf?: {
-    apiUrl?: string | null
-    apiUrls?: string[]
-    dedicatedFirst?: boolean
-    apiKey?: string
-    authHeaderType?: string
-    customHeaderName?: string
-    fieldMapping?: Record<string, string>
-    customProxy?: any
-    videoIdApiUrl?: string
-    videoIdParam?: string
+function describeParsed(parsed: ParsedData) {
+  return {
+    type: parsed.type,
+    title: parsed.title.slice(0, 60),
+    author: parsed.author.slice(0, 40),
+    video: Boolean(parsed.video),
+    videos: parsed.videos.length,
+    images: parsed.images.length,
+    livePhoto: parsed.live_photo.length,
+    avatar: Boolean(parsed.avatar),
+    cover: Boolean(parsed.cover),
+    musicCover: Boolean(parsed.music.cover),
+    music: Boolean(parsed.music.url),
+    duration: parsed.duration,
+    publishTime: parsed.publishTime,
   }
-): Promise<ParsedData> {
+}
+
+export async function fetchApi(http: AxiosInstance, config: FetchConfig, url: string, type: string, platformConf?: PlatformConf): Promise<ParsedData> {
   const cacheStore = getCacheStore(http)
   const cacheTTL = config.cacheTTL ?? 60000
   const cacheKey = `${type}::${url}`
   const cached = cacheStore.get(cacheKey)
-  if (cached && cached.expire > Date.now()) return cached.data
+  if (cached && cached.expire > Date.now()) {
+    debugLog('INFO', '命中缓存', { cacheKey, ttlLeft: cached.expire - Date.now(), type: cached.data.type })
+    return cached.data
+  }
+  if (cached) {
+    cacheStore.delete(cacheKey)
+    debugLog('DEBUG', '缓存已过期', { cacheKey })
+  }
 
   const primaryApi = config.primaryApiUrl || 'https://api-new.ifphp.com/api/svparse'
-  const apiList = buildApiList(type, primaryApi, platformConf)
+  const apiList = buildApiList(type, primaryApi, platformConf, config.apiKey)
   if (!apiList.length) throw new Error(`平台 ${type} 未配置解析API`)
+  debugLog('INFO', 'API 调用顺序', apiList.map(api => ({
+    label: api.label,
+    url: api.url,
+    param: api.videoIdParam || 'url',
+    apiKey: maskSecret(api.apiKey),
+    authHeaderType: api.authHeaderType,
+  })))
 
   const customHeaders = config.customHeaders || []
   const maxRetries = config.retryTimes ?? 3
   const retryDelay = config.retryInterval ?? 1000
+  const requestStartedAt = Date.now()
   let lastError: Error | null = null
   let lastVideoId = ''
 
   for (const api of apiList) {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const attemptStartedAt = Date.now()
       try {
         const headers: Record<string, string> = {
           'Referer': 'https://www.baidu.com/',
@@ -149,7 +175,7 @@ export async function fetchApi(
         }
         if (api.videoIdParam && !lastVideoId) {
           lastError = new Error('未取得抖音 video_id')
-          debugLog('WARN', `${api.label} skipped: video_id unavailable`)
+          debugLog('DEBUG', `${api.label} 跳过: 缺少 video_id`)
           break
         }
         const params: Record<string, string> = api.videoIdParam ? { [api.videoIdParam]: lastVideoId } : { url }
@@ -165,13 +191,24 @@ export async function fetchApi(
             auth: proxyToUse.auth?.username ? { username: proxyToUse.auth.username, password: proxyToUse.auth.password || '' } : undefined,
           }
         }
+        debugLog('DEBUG', `请求 ${api.label}`, {
+          attempt: attempt + 1,
+          url: api.url,
+          params: { ...params, ...(params.key ? { key: maskSecret(params.key) } : {}) },
+        })
         const res = await http.get(api.url, axiosConfig)
         const statusField = getFirst(res.data, ['code', 'status', 'status_code', 'ret', 'retcode', 'errno', 'errcode'])
+        debugLog('DEBUG', `响应 ${api.label}`, elapsedSince(attemptStartedAt), {
+          httpStatus: res.status,
+          code: statusField,
+          bytes: isDebugEnabled() ? JSON.stringify(res.data ?? null).length : undefined,
+        })
         if (!isSuccessStatus(statusField)) throw new Error(getResponseMessage(res.data, statusField))
         const parsed = parseApiResponse(res.data, config.maxDescLength, api.fieldMapping)
         if (parsed.videoId) lastVideoId = parsed.videoId
         if (!hasParseableContent(parsed)) throw new Error('解析接口返回空内容')
         if (cacheTTL > 0) cacheStore.set(cacheKey, { data: parsed, expire: Date.now() + cacheTTL })
+        debugLog('INFO', `解析成功 ${api.label}`, elapsedSince(requestStartedAt), describeParsed(parsed))
         return parsed
       } catch (error) {
         let errorMsg = ''
@@ -185,7 +222,11 @@ export async function fetchApi(
         }
         if (!errorMsg) errorMsg = error instanceof Error ? error.message : String(error)
         lastError = new Error(errorMsg)
-        debugLog('ERROR', `${api.label} attempt ${attempt + 1} failed: ${lastError.message}`)
+        debugLog('DEBUG', `${api.label} 第 ${attempt + 1} 次失败`, elapsedSince(attemptStartedAt), {
+          message: lastError.message,
+          axiosCode: axios.isAxiosError(error) ? error.code : undefined,
+          httpStatus: axios.isAxiosError(error) ? error.response?.status : undefined,
+        })
         if (axios.isAxiosError(error)) {
           if (!error.response && attempt < maxRetries) {
             await delay(retryDelay)
@@ -200,7 +241,7 @@ export async function fetchApi(
         break
       }
     }
-    debugLog('WARN', `${api.label} all retries failed`)
+    debugLog('DEBUG', `${api.label} 重试结束`, elapsedSince(requestStartedAt))
   }
   throw lastError || new Error('所有API请求全部失败')
 }

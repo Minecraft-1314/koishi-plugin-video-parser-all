@@ -57,14 +57,22 @@ export const Config = Schema.intersect([
     showAuthorAvatarFile: Schema.boolean().default(true).description('作者头像图片是否以图片形式发送（关闭则只发送链接）'),
     showAuthorAvatarText: Schema.boolean().default(true).description('作者头像前显示文字提示（将追加到文字消息末尾）'),
     authorAvatarText: Schema.string().default('作者头像：').description('作者头像前显示的文字'),
-    showMusicCover: Schema.boolean().default(true).description('发送音乐封面图片'),
+    showMusicCover: Schema.boolean().default(false).description('发送音乐封面图片'),
+    showMusicCoverText: Schema.boolean().default(true).description('音乐封面前显示文字提示'),
+    musicCoverText: Schema.string().default('音乐封面：').description('音乐封面前显示的文字'),
+    showVideo: Schema.boolean().default(true).description('发送视频'),
     showVideoFile: Schema.boolean().default(true).description('视频是否以视频形式发送（关闭则只发送链接）'),
   }).description('媒体发送'),
 
   Schema.object({
-    showMusicVoice: Schema.boolean().default(false).description('音乐链接以语音形式发送'),
+    showMusicVoice: Schema.boolean().default(false).description('发送音乐链接'),
+    musicVoiceScope: Schema.union([
+      Schema.const('all').description('全部'),
+      Schema.const('video').description('仅视频'),
+      Schema.const('image').description('仅图文'),
+    ]).default('all').description('发送范围'),
     showMusicVoiceFile: Schema.boolean().default(true).description('音乐链接是否以语音形式发送（关闭则只发送链接）'),
-  }).description('音乐语音（需 silk 和 ffmpeg）'),
+  }).description('音乐链接（转语音需 silk 和 ffmpeg）'),
 
   Schema.object({
     maxDescLength: Schema.number().min(0).step(1).default(200).description('简介长度上限'),
@@ -106,6 +114,13 @@ export const Config = Schema.intersect([
     retryTimes: Schema.number().min(0).step(1).default(3).description('重试次数'),
     retryInterval: Schema.number().min(0).step(1).default(1000).description('重试间隔 (ms)'),
     enableForward: Schema.boolean().default(false).description('合并转发（OneBot/Satori）'),
+    forwardMergeText: Schema.boolean().default(true).description('文字参与合并转发'),
+    forwardMergeImage: Schema.boolean().default(true).description('作品图片参与合并转发'),
+    forwardMergeCover: Schema.boolean().default(true).description('封面参与合并转发'),
+    forwardMergeAvatar: Schema.boolean().default(true).description('作者头像参与合并转发'),
+    forwardMergeMusicCover: Schema.boolean().default(true).description('音乐封面参与合并转发'),
+    forwardMergeVideo: Schema.boolean().default(false).description('视频参与合并转发'),
+    forwardMergeMusic: Schema.boolean().default(false).description('音乐参与合并转发'),
   }).description('发送与重试'),
 
   Schema.object({
