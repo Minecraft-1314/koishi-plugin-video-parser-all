@@ -13,7 +13,7 @@ Please read first:
 
 | Document | Description |
 |------|------|
-| [CHANGELOG-v1.7.6.md](docs/CHANGELOG-v1.7.6.md) | v1.7.6 changelog |
+| [CHANGELOG-v1.7.7.md](docs/CHANGELOG-v1.7.7.md) | v1.7.7 changelog |
 | [API_ADDRESSES.md](docs/API_ADDRESSES.md) | API parsing addresses for the main gateway and platform-specific endpoints |
 | [COMPATIBILITY.md](docs/COMPATIBILITY.md) | API field compatibility notes, including all supported field aliases |
 | [LINK_RULES.md](docs/LINK_RULES.md) | Link matching rules for all supported platforms (regex) |

@@ -12,7 +12,7 @@
 
 | 文档 | 说明 |
 |------|------|
-| [CHANGELOG-v1.7.6.md](docs/CHANGELOG-v1.7.6.md) | v1.7.6 版本更新日志 |
+| [CHANGELOG-v1.7.7.md](docs/CHANGELOG-v1.7.7.md) | v1.7.7 版本更新日志 |
 | [API_ADDRESSES.md](docs/API_ADDRESSES.md) | 插件 API 解析地址一览（主 API 与各平台专属接口） |
 | [COMPATIBILITY.md](docs/COMPATIBILITY.md) | API 字段兼容性说明（支持的所有字段别名） |
 | [LINK_RULES.md](docs/LINK_RULES.md) | 所有平台的链接匹配规则（正则表达式） |

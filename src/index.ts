@@ -264,8 +264,9 @@ export function apply(ctx: Context, config: PluginConfig) {
 
   function buildPlanNode(session: any, item: SendPlanItem, botName: string) {
     const content: any[] = []
-    if (item.text) content.push(h.text(item.text))
-    if (item.url && item.mediaType) content.push(createMediaElement(item.mediaType, item.url))
+    const hasMedia = Boolean(item.url && item.mediaType)
+    if (item.text) content.push(h.text(hasMedia ? `${item.text}\n` : item.text))
+    if (hasMedia) content.push(createMediaElement(item.mediaType as 'image' | 'video' | 'audio', item.url as string))
     return buildForwardNode(session, content, botName)
   }
 
