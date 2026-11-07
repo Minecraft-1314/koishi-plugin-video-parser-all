@@ -13,14 +13,14 @@ Please read first:
 
 | Document | Description |
 |------|------|
-| [CHANGELOG-v1.7.7.md](docs/CHANGELOG-v1.7.7.md) | v1.7.7 changelog |
+| [CHANGELOG-v1.7.8.md](docs/CHANGELOG-v1.7.8.md) | v1.7.8 changelog |
 | [API_ADDRESSES.md](docs/API_ADDRESSES.md) | API parsing addresses for the main gateway and platform-specific endpoints |
 | [COMPATIBILITY.md](docs/COMPATIBILITY.md) | API field compatibility notes, including all supported field aliases |
 | [LINK_RULES.md](docs/LINK_RULES.md) | Link matching rules for all supported platforms (regex) |
 
 ## Introduction
 
-This is a **cross-platform video/image parsing plugin** developed for the Koishi framework. It supports automatic recognition and parsing of short video/image/live links from **20+ mainstream platforms**, including Douyin, Kuaishou, Bilibili, Xiaohongshu, Weibo, Xigua Video, YouTube, TikTok, AcFun, Zhihu, Weishi, Huya, Haokan Video, Meipai, Twitter/X, Instagram, Doubao (video/image), **Jimeng (AI video/image)**, Oasis, Video Account, Pear Video, Quanmin Live, Pipi Funny, Pipi Shrimp, Zuiyou, and Dola.
+This is a **video/image parsing plugin** developed for the Koishi framework. It supports automatic recognition and parsing of short video/image/live links from mainstream platforms, including Douyin, Kuaishou, Bilibili, Toutiao, Qianwen, TikTok, AcFun, Weishi, Haokan Video, Doubao (video/image), **Jimeng (AI video/image)**, WeChat Channels, Pear Video, and Dola. The platform list is based on real-world tests against the free video parsing endpoints of `api-new.ifphp.com`.
 
 ## Repository
 
@@ -76,7 +76,7 @@ This is a **cross-platform video/image parsing plugin** developed for the Koishi
 | `showMusicCover` | boolean | `false` | Send the music cover image |
 | `showMusicCoverText` | boolean | `true` | Send a text label before the music cover |
 | `musicCoverText` | string | `音乐封面：` | Label shown before the music cover |
-| `showVideo` | boolean | `true` | Send the video |
+| `showVideo` | boolean | `true` | Send the video (Live Photos are treated as normal images; their video is not sent) |
 | `showVideoFile` | boolean | `true` | Send videos as video files; disable to send links only |
 
 ### Music Link
@@ -155,12 +155,12 @@ With `debug` enabled the plugin logs the full path, which makes over-sending, mi
 | Config | Type | Default | Description |
 |------|------|------|------|
 | `primaryApiUrl` | string | `https://api-new.ifphp.com/api/svparse` | Main aggregation API URL |
-| `platformDedicatedFirst` | object | all disabled | Prefer dedicated APIs for `bilibili`, `douyin`, `kuaishou`, `wechat_channel`, `doubao`, `pipigx`, `jimeng`, and `dola` |
+| `platformDedicatedFirst` | object | all disabled | Prefer dedicated APIs for `bilibili`, `douyin`, `kuaishou`, `wechat_channel`, `doubao`, `jimeng`, and `dola` |
 | `customApis` | array | `[]` | Override built-in platform APIs |
 | `customPlatforms` | array | `[]` | Add custom platforms |
 | `globalFieldMapping` | string | preset | Global field mapping JSON |
 
-> Dedicated APIs are available for: `bilibili`, `douyin`, `kuaishou`, `wechat_channel`, `doubao`, `pipigx`, `jimeng`, `dola`. Douyin uses `svparse` → `dyjx` → `dydj`; when an earlier endpoint returns only a `video_id`, `zjyh` is tried last to resolve the original-quality media URL.
+> Dedicated APIs are available for: `bilibili`, `douyin`, `kuaishou`, `wechat_channel`, `doubao`, `jimeng`, `dola`. Douyin uses `svparse` → `dyjx` → `dydj`; when an earlier endpoint returns only a `video_id`, `zjyh` is tried last to resolve the original-quality media URL.
 
 ### UI Text
 
@@ -201,32 +201,20 @@ The plugin can automatically identify links from these platforms. All patterns s
 | Platform | Keywords and domain/path patterns | Supported content |
 |------|------|------|
 | Bilibili | `bilibili.com/video/`, `b23.tv`, `bili*.cn`, `b23.wtf`, `b2233.cn` | Video |
-| Douyin | `douyin.com/video/`, `v.douyin.com` | Short video, image, live photo |
+| Douyin | `douyin.com/video/`, `v.douyin.com` | Short video, image, live photo (all treated as normal images) |
 | Dola | `dola.com/thread/` | Short video |
 | Kuaishou | `kuaishou.com/short-video/`, `v.kuaishou.com`, `kuaishou.com/f/` | Short video, image |
-| Xiaohongshu | `xiaohongshu.com/discovery/item/`, `xhslink.com`, `xiaohongshu.com/explore/`, `xiaohongshu.com/board/` | Image, video |
-| Weibo | `weibo.com/<id>/`, `video.weibo.com/show`, `t.cn`, `m.weibo.cn` | Video, image |
-| Xigua | `ixigua.com` | Short video |
-| YouTube | `youtube.com/watch`, `youtu.be`, `youtube.com/shorts/` | Video |
+| Toutiao | `toutiao.com/video/`, `toutiao.com/i|w|group|article/` | Video |
+| Qianwen | `qianwen.com/chat/`, `qianwen.com/share/chat/`, `tongyi.aliyun.com` | AI video, image |
 | TikTok | `tiktok.com/@/video/`, `vm.tiktok.com`, `vt.tiktok.com` | Short video |
 | AcFun | `acfun.cn/v/ac` | Video |
-| Zhihu | `zhihu.com/video/`, `zhihu.com/question/xxx/answer/xxx`, `zhuanlan.zhihu.com/p/`, `zhihu.com/zvideo/` | Video, answer video |
 | Weishi | `weishi.qq.com/weishi/feed/` | Short video |
-| Huya | `huya.com/video/` | Live replay, video |
 | Haokan | `haokan.baidu.com/v?vid=` | Short video |
-| Meipai | `meipai.com/media/` | Short video |
-| Twitter / X | `twitter.com/<username>/status/`, `x.com/<username>/status/` | Video, image |
-| Instagram | `instagram.com/p/`, `instagram.com/reel/`, `instagram.com/share/` | Image, Reels |
 | Doubao Video | `doubao.com/video/`, `doubao.com/video-sharing` | Video |
 | Doubao Image | `doubao.com/thread/` | Image |
 | Jimeng | `jimeng.jianying.com`, `jimeng.cn`, `dreamina.jianying.com`, `dreamina.capcut.com` | AI video, AI image |
-| Oasis | `oasis.weibo.com/v/` | Video, image |
 | WeChat Channels | `channels.weixin.qq.com`, `weixin.qq.com/sph/` | Short video |
 | Pear Video | `pearvideo.com/video_`, `video.li` | Short video |
-| Quanmin Live | `quanmin.tv`, `quanmintv.cn` | Live |
-| Pipigx | `h5.pipigx.com/pp/post/`, `ippzone.com` | Short video |
-| Pipixia | `pipix.com`, `pipixia.com` | Short video |
-| Zuiyou | `share.xiaochuankeji.cn/hybrid/share/post`, `izuiyou.com` | Short video |
 | Custom | Add via `customPlatforms` | Depends on the provided API |
 
 ## Contributors
@@ -246,6 +234,7 @@ The plugin can automatically identify links from these platforms. All patterns s
 | GSRealms | Reported duplicate video parsing; fixed |
 | a255266 | Suggested merge-forward filtering; adopted |
 | a255266 | Suggested music link send scope; adopted |
+| a255266 | Bug Submission - Resolved an issue where Live Photos could not be sent on Douyin |
 | JH-Ahua | API support |
 | shangxue | Inspiration |
 

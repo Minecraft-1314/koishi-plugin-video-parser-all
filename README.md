@@ -12,14 +12,14 @@
 
 | 文档 | 说明 |
 |------|------|
-| [CHANGELOG-v1.7.7.md](docs/CHANGELOG-v1.7.7.md) | v1.7.7 版本更新日志 |
+| [CHANGELOG-v1.7.8.md](docs/CHANGELOG-v1.7.8.md) | v1.7.8 版本更新日志 |
 | [API_ADDRESSES.md](docs/API_ADDRESSES.md) | 插件 API 解析地址一览（主 API 与各平台专属接口） |
 | [COMPATIBILITY.md](docs/COMPATIBILITY.md) | API 字段兼容性说明（支持的所有字段别名） |
 | [LINK_RULES.md](docs/LINK_RULES.md) | 所有平台的链接匹配规则（正则表达式） |
 
 ## 项目介绍
 
-这是一个为 Koishi 机器人框架开发的**全平台视频/图集解析插件**，支持自动识别并解析抖音、快手、B站、小红书、微博、西瓜视频、YouTube、TikTok、AcFun（A站）、知乎、微视、虎牙、好看视频、美拍、Twitter/X、Instagram、豆包（视频/图集）、**即梦（AI视频/图片）**、绿洲、视频号、梨视频、全民直播、皮皮搞笑、皮皮虾、最右、Dola 等**20+主流平台**的短视频/图集/实况链接。
+这是一个为 Koishi 机器人框架开发的**视频/图集解析插件**，支持自动识别并解析抖音、快手、B站、今日头条、千问、TikTok、AcFun（A站）、微视、好看视频、豆包（视频/图集）、**即梦（AI视频/图片）**、视频号、梨视频、Dola 等主流平台的短视频/图集/实况链接。平台清单以 `api-new.ifphp.com` 免费视频解析接口的实测结果为准。
 
 ## 项目仓库
 
@@ -75,7 +75,7 @@
 | `showMusicCover` | boolean | `false` | 发送音乐封面图片 |
 | `showMusicCoverText` | boolean | `true` | 音乐封面前显示文字提示 |
 | `musicCoverText` | string | `音乐封面：` | 音乐封面前显示的文字 |
-| `showVideo` | boolean | `true` | 发送视频 |
+| `showVideo` | boolean | `true` | 发送视频（实况照片按普通图片处理，不发送实况视频） |
 | `showVideoFile` | boolean | `true` | 视频是否以视频形式发送（关闭则只发送链接） |
 
 ### 音乐链接
@@ -154,12 +154,12 @@
 | 配置项 | 类型 | 默认值 | 说明 |
 |------|------|------|------|
 | `primaryApiUrl` | string | `https://api-new.ifphp.com/api/svparse` | 主解析 API 地址（聚合接口） |
-| `platformDedicatedFirst` | object | 全关 | 优先使用专属 API（仅 `bilibili`、`douyin`、`kuaishou`、`wechat_channel`、`doubao`、`pipigx`、`jimeng`、`dola`） |
+| `platformDedicatedFirst` | object | 全关 | 优先使用专属 API（仅 `bilibili`、`douyin`、`kuaishou`、`wechat_channel`、`doubao`、`jimeng`、`dola`） |
 | `customApis` | array | `[]` | 覆盖内置平台 API |
 | `customPlatforms` | array | `[]` | 自定义新平台 |
 | `globalFieldMapping` | string | 预设 | 全局字段映射 JSON |
 
-> 专属 API 包括：`bilibili`、`douyin`、`kuaishou`、`wechat_channel`、`doubao`、`pipigx`、`jimeng`、`dola`。抖音接口顺序为 `svparse` → `dyjx` → `dydj`；前序接口只返回 `video_id` 时，最后尝试 `zjyh` 原画直链解析。
+> 专属 API 包括：`bilibili`、`douyin`、`kuaishou`、`wechat_channel`、`doubao`、`jimeng`、`dola`。抖音接口顺序为 `svparse` → `dyjx` → `dydj`；前序接口只返回 `video_id` 时，最后尝试 `zjyh` 原画直链解析。
 
 ### 界面文本
 
@@ -200,32 +200,20 @@
 | 平台 | 关键词识别（域名/路径模式） | 解析能力 |
 |------|------|------|
 | 哔哩哔哩（B站） | `bilibili.com/video/`、`b23.tv`、`bili*.cn`、`b23.wtf`、`b2233.cn` | 视频 |
-| 抖音 | `douyin.com/video/`、`v.douyin.com` | 短视频、图集、实况 |
+| 抖音 | `douyin.com/video/`、`v.douyin.com` | 短视频、图集、实况（Live Photo 全部按普通图片发送） |
 | Dola | `dola.com/thread/` | 短视频 |
 | 快手 | `kuaishou.com/short-video/`、`v.kuaishou.com`、`kuaishou.com/f/` | 短视频、图集 |
-| 小红书 | `xiaohongshu.com/discovery/item/`、`xhslink.com`、`xiaohongshu.com/explore/`、`xiaohongshu.com/board/` | 图文、视频 |
-| 微博 | `weibo.com/数字/`、`video.weibo.com/show`、`t.cn`、`m.weibo.cn` | 视频、图集 |
-| 西瓜视频 | `ixigua.com` | 短视频 |
-| YouTube | `youtube.com/watch`、`youtu.be`、`youtube.com/shorts/` | 视频 |
+| 今日头条 | `toutiao.com/video/`、`toutiao.com/i|w|group|article/` | 视频 |
+| 千问 | `qianwen.com/chat/`、`qianwen.com/share/chat/`、`tongyi.aliyun.com` | AI 视频、图片 |
 | TikTok | `tiktok.com/@/video/`、`vm.tiktok.com`、`vt.tiktok.com` | 短视频 |
 | AcFun（A站） | `acfun.cn/v/ac` | 视频 |
-| 知乎 | `zhihu.com/video/`、`zhihu.com/question/xxx/answer/xxx`、`zhuanlan.zhihu.com/p/`、`zhihu.com/zvideo/` | 视频、回答中的视频 |
 | 微视 | `weishi.qq.com/weishi/feed/` | 短视频 |
-| 虎牙 | `huya.com/video/` | 直播回放、视频 |
 | 好看视频 | `haokan.baidu.com/v?vid=` | 短视频 |
-| 美拍 | `meipai.com/media/` | 短视频 |
-| Twitter / X | `twitter.com/用户名/status/`、`x.com/用户名/status/` | 视频、图文 |
-| Instagram | `instagram.com/p/`、`instagram.com/reel/`、`instagram.com/share/` | 图文、Reels |
 | 豆包（视频） | `doubao.com/video/`、`doubao.com/video-sharing` | 视频 |
 | 豆包（图集） | `doubao.com/thread/` | 图文 |
 | 即梦 | `jimeng.jianying.com`、`jimeng.cn`、`dreamina.jianying.com`、`dreamina.capcut.com` | AI视频、AI图片 |
-| 绿洲 | `oasis.weibo.com/v/` | 视频、图文 |
 | 视频号 | `channels.weixin.qq.com`、`weixin.qq.com/sph/` | 短视频 |
 | 梨视频 | `pearvideo.com/video_`、`video.li` | 短视频 |
-| 全民直播 | `quanmin.tv`、`quanmintv.cn` | 直播 |
-| 皮皮搞笑 | `h5.pipigx.com/pp/post/`、`ippzone.com` | 短视频 |
-| 皮皮虾 | `pipix.com`、`pipixia.com` | 短视频 |
-| 最右 | `share.xiaochuankeji.cn/hybrid/share/post`、`izuiyou.com` | 短视频 |
 | 自定义平台 | 通过 `customPlatforms` 配置添加 | 取决于提供的 API |
 
 ## 项目贡献者
@@ -239,7 +227,7 @@
 | dzt2008 + Apricityx | 提交 Bug-会对非支持视频平台 URL 进行误解析-已修复 |
 | linyves | 提交 Bug-小红书图集重复发送封面-已修复；提交 Bug-话题显示异常-已修复；提交建议-Live Photo 全部按普通图片处理-已采纳；提交 Bug-解析后会把作者头像一起发送-已修复 |
 | GSRealms | 提交 Bug-视频重复解析-已修复 |
-| a255266 | 提交功能建议-合并转发增加筛选功能-已采纳；提交功能建议-音乐链接发送范围功能-已采纳 |
+| a255266 | 提交功能建议-合并转发增加筛选功能-已采纳；提交功能建议-音乐链接发送范围功能-已采纳；提交 Bug-解析抖音无法发送实况照片-已修复 |
 | JH-Ahua | API 支持 |
 | shangxue | 灵感来源 |
 

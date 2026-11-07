@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios'
 import type { ApiItem, ParsedData } from '../types'
 import { parseApiResponse } from '../parser'
-import { delay, getFirst } from '../utils'
+import { delay, getFirst, safeJsonParse } from '../utils'
 import { debugLog, elapsedSince, isDebugEnabled, maskSecret } from '../logger'
 
 interface CacheEntry {
@@ -67,9 +67,16 @@ function hasParseableContent(data: ParsedData): boolean {
   return Boolean(data.video || data.images.length || data.live_photo.length)
 }
 
+function sanitizeErrorMessage(text: string): string {
+  const trimmed = text.trim()
+  if (/^<[!a-z]/i.test(trimmed) || /<html|<!doctype/i.test(trimmed)) return '解析接口返回了非预期内容'
+  if (trimmed.length > 200) return trimmed.slice(0, 200) + '...'
+  return trimmed
+}
+
 function getResponseMessage(data: any, statusField: any): string {
   const message = getFirst(data, ['error', 'message', 'msg', 'errmsg', 'err_msg', 'error_msg', 'description', 'detail'])
-  if (message !== undefined) return String(message)
+  if (message !== undefined) return sanitizeErrorMessage(String(message))
   return `API返回错误码: ${String(statusField ?? 'unknown')}`
 }
 
@@ -154,6 +161,8 @@ export async function fetchApi(http: AxiosInstance, config: FetchConfig, url: st
   const retryDelay = config.retryInterval ?? 1000
   const requestStartedAt = Date.now()
   let lastError: Error | null = null
+  let businessError: string | null = null
+  let httpErrorMessage: string | null = null
   let lastVideoId = ''
 
   for (const api of apiList) {
@@ -174,7 +183,6 @@ export async function fetchApi(http: AxiosInstance, config: FetchConfig, url: st
           else headers['X-API-Key'] = api.apiKey
         }
         if (api.videoIdParam && !lastVideoId) {
-          lastError = new Error('未取得抖音 video_id')
           debugLog('DEBUG', `${api.label} 跳过: 缺少 video_id`)
           break
         }
@@ -197,30 +205,47 @@ export async function fetchApi(http: AxiosInstance, config: FetchConfig, url: st
           params: { ...params, ...(params.key ? { key: maskSecret(params.key) } : {}) },
         })
         const res = await http.get(api.url, axiosConfig)
-        const statusField = getFirst(res.data, ['code', 'status', 'status_code', 'ret', 'retcode', 'errno', 'errcode'])
+        const rawData = safeJsonParse(res.data)
+        const statusField = getFirst(rawData, ['code', 'status', 'status_code', 'ret', 'retcode', 'errno', 'errcode'])
         debugLog('DEBUG', `响应 ${api.label}`, elapsedSince(attemptStartedAt), {
           httpStatus: res.status,
           code: statusField,
-          bytes: isDebugEnabled() ? JSON.stringify(res.data ?? null).length : undefined,
+          bytes: isDebugEnabled() ? JSON.stringify(rawData ?? null).length : undefined,
         })
-        if (!isSuccessStatus(statusField)) throw new Error(getResponseMessage(res.data, statusField))
-        const parsed = parseApiResponse(res.data, config.maxDescLength, api.fieldMapping)
+        if (!isSuccessStatus(statusField)) {
+          const msg = getResponseMessage(rawData, statusField)
+          if (!businessError) businessError = msg
+          throw new Error(msg)
+        }
+        const parsed = parseApiResponse(rawData, config.maxDescLength, api.fieldMapping)
         if (parsed.videoId) lastVideoId = parsed.videoId
-        if (!hasParseableContent(parsed)) throw new Error('解析接口返回空内容')
+        if (!hasParseableContent(parsed)) {
+          debugLog('DEBUG', `${api.label} 返回空内容，尝试下一个接口`)
+          if (!lastError) lastError = new Error('解析接口返回空内容')
+          break
+        }
         if (cacheTTL > 0) cacheStore.set(cacheKey, { data: parsed, expire: Date.now() + cacheTTL })
         debugLog('INFO', `解析成功 ${api.label}`, elapsedSince(requestStartedAt), describeParsed(parsed))
         return parsed
       } catch (error) {
         let errorMsg = ''
-        if (axios.isAxiosError(error) && error.response?.data) {
-          const data = error.response.data
-          if (typeof data === 'object' && data !== null) {
-            errorMsg = String(getFirst(data, ['error', 'message', 'msg', 'errmsg', 'err_msg', 'error_msg', 'description', 'detail'], '') || '')
+        if (axios.isAxiosError(error) && error.response?.data !== undefined) {
+          const data = safeJsonParse(error.response.data)
+          if (data && typeof data === 'object' && !Array.isArray(data)) {
+            const statusField = getFirst(data, ['code', 'status', 'status_code', 'ret', 'retcode', 'errno', 'errcode'])
+            const structured = getFirst(data, ['error', 'message', 'msg', 'errmsg', 'err_msg', 'error_msg', 'description', 'detail'])
+            if (structured !== undefined) {
+              errorMsg = sanitizeErrorMessage(String(structured))
+              if (!httpErrorMessage) httpErrorMessage = errorMsg
+            } else if (!isSuccessStatus(statusField)) {
+              errorMsg = `API返回错误码: ${String(statusField ?? 'unknown')}`
+            }
           } else if (typeof data === 'string') {
-            errorMsg = data
+            errorMsg = sanitizeErrorMessage(data)
           }
         }
         if (!errorMsg) errorMsg = error instanceof Error ? error.message : String(error)
+        errorMsg = sanitizeErrorMessage(errorMsg)
         lastError = new Error(errorMsg)
         debugLog('DEBUG', `${api.label} 第 ${attempt + 1} 次失败`, elapsedSince(attemptStartedAt), {
           message: lastError.message,
@@ -243,5 +268,5 @@ export async function fetchApi(http: AxiosInstance, config: FetchConfig, url: st
     }
     debugLog('DEBUG', `${api.label} 重试结束`, elapsedSince(requestStartedAt))
   }
-  throw lastError || new Error('所有API请求全部失败')
+  throw new Error(businessError || httpErrorMessage || lastError?.message || '所有API请求全部失败')
 }

@@ -2,6 +2,28 @@ import { ParsedData, VideoQuality } from './types'
 import { getNestedValue, getFirst, safeJsonParse, normalizeUrl, parseCount, pickBestQuality } from './utils'
 import { debugLog } from './logger'
 
+const LIVE_TYPE_ALIASES = new Set(['live', 'live_photo', 'livephoto', 'live-photo', 'live photo', 'livephotos'])
+
+function normalizeType(raw: any): string {
+  const value = String(raw ?? '').trim().toLowerCase()
+  if (!value) return ''
+  if (LIVE_TYPE_ALIASES.has(value)) return 'image'
+  return value
+}
+
+function extractLivePhoto(lp: any): { image: string; video: string } | null {
+  if (typeof lp === 'string') {
+    const image = normalizeUrl(lp)
+    return image ? { image, video: '' } : null
+  }
+  if (!lp || typeof lp !== 'object') return null
+  const image = normalizeUrl(getFirst(lp, ['image', 'img', 'image_url', 'pic', 'pic_url', 'photo', 'cover'], '')) || normalizeUrl(lp.url)
+  let video = normalizeUrl(getFirst(lp, ['video', 'video_url', 'videoUrl', 'play_url', 'play_addr'], ''))
+  if (video && video === image) video = ''
+  if (!image && !video) return null
+  return { image, video }
+}
+
 export function parseApiResponse(raw: any, maxDescLen: number, fieldMapping?: Record<string, string>): ParsedData {
   debugLog('DEBUG', 'API raw response', raw)
   let data = raw?.data ?? raw ?? {}
@@ -21,12 +43,13 @@ export function parseApiResponse(raw: any, maxDescLen: number, fieldMapping?: Re
   let type = mapField('type', ['data.type', 'data.videoType', 'data.media_type', 'data.content_type', 'data.kind'], () => {
     let t = getFirst(data, ['type', 'videoType', 'media_type', 'content_type']) || ''
     if (!t) {
-      if (data.images?.length > 0 && !data.url) t = 'image'
-      else if (data.live_photo?.length > 0) t = 'live_photo'
+      if (data.live_photo?.length > 0) t = 'live_photo'
+      else if (data.images?.length > 0 && !data.url) t = 'image'
       else t = 'video'
     }
     return t
   })
+  type = normalizeType(type)
   if (!type) type = 'video'
 
   const authorObj = mapField('author', ['data.author', 'data.user', 'data.owner', 'data.uploader', 'data.creator', 'data.publisher', 'data.user_info', 'data.author_info', 'data.profile'], () => {})
@@ -123,14 +146,21 @@ export function parseApiResponse(raw: any, maxDescLen: number, fieldMapping?: Re
     images = data.pic_list.map(normalizeImage).filter((url: string | null): url is string => !!url)
   }
 
-  const live_photo = Array.isArray(data.live_photo)
+  const live_photo: { image: string; video: string }[] = Array.isArray(data.live_photo)
     ? data.live_photo
-        .filter((lp: any) => lp && lp.image)
-        .map((lp: any) => ({
-          image: normalizeUrl(lp.image),
-          video: normalizeUrl(lp.video)
-        }))
+        .map(extractLivePhoto)
+        .filter((lp: { image: string; video: string } | null): lp is { image: string; video: string } => !!lp && (!!lp.image || !!lp.video))
     : []
+
+  if (live_photo.length) {
+    const seenImages = new Set(images)
+    for (const livePhoto of live_photo) {
+      if (livePhoto.image && !seenImages.has(livePhoto.image)) {
+        seenImages.add(livePhoto.image)
+        images.push(livePhoto.image)
+      }
+    }
+  }
 
   const musicCoverRaw = mapField('music_cover', ['data.music.cover', 'data.music.albumCover.url', 'data.music_info.cover', 'data.bgm.cover'], () => data.music?.cover || data.music?.albumCover?.url || '')
   const musicUrlRaw = mapField('music_url', ['data.music.url', 'data.music.playURL', 'data.music_info.url', 'data.bgm.url'], () => data.music?.url || data.music?.playURL || '')

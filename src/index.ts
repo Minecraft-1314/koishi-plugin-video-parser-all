@@ -152,7 +152,6 @@ export function apply(ctx: Context, config: PluginConfig) {
       kuaishou: ['https://api-new.ifphp.com/api/ksjx'],
       wechat_channel: ['https://api-new.ifphp.com/api/wxsph'],
       doubao: ['https://api-new.ifphp.com/api/doubao'],
-      pipigx: ['https://api-new.ifphp.com/api/pipigx'],
       jimeng: ['https://api-new.ifphp.com/api/jimeng'],
       dola: ['https://api-new.ifphp.com/api/dola'],
     }

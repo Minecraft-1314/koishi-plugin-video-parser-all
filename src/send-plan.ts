@@ -60,7 +60,9 @@ export interface SendPlanConfig {
 
 export function hasPlayableVideo(parsed: ParsedData): boolean {
   if (!parsed.video) return false
-  return parsed.type !== 'image' && parsed.type !== 'live_photo'
+  if (parsed.type === 'image' || parsed.type === 'live_photo') return false
+  if (parsed.live_photo?.length) return false
+  return true
 }
 
 export function shouldSendMusic(parsed: ParsedData, config: SendPlanConfig): boolean {
@@ -92,6 +94,14 @@ export function groupSendPlan(plan: SendPlanItem[], mergeKinds: Set<SendKind>): 
   return segments
 }
 
+function separateAdjacentText(plan: SendPlanItem[]): void {
+  let prevEndsWithText = false
+  for (const item of plan) {
+    if (prevEndsWithText && item.text && !item.text.startsWith('\n')) item.text = `\n${item.text}`
+    prevEndsWithText = Boolean(item.text) && !(item.url && item.mediaType)
+  }
+}
+
 export function buildSendPlan(parsed: ParsedData, config: SendPlanConfig, text: string): SendPlanItem[] {
   const plan: SendPlanItem[] = []
   const sentImages = new Set<string>()
@@ -103,14 +113,16 @@ export function buildSendPlan(parsed: ParsedData, config: SendPlanConfig, text: 
     else plan.push({ kind, label, text: `${label}链接：${url}` })
   }
 
-  if (text && config.showImageText) plan.push({ kind: 'text', label: '文字', text })
+  const avatarHint = config.showAuthorAvatarText ? config.authorAvatarText || '作者头像：' : ''
+  const appendAvatarHint = Boolean(config.showAuthorAvatar && parsed.avatar && config.showAuthorAvatarFile && avatarHint && text && config.showImageText)
+  const mainText = appendAvatarHint ? `${text}\n${avatarHint}` : text
+  if (mainText && config.showImageText) plan.push({ kind: 'text', label: '文字', text: mainText })
 
   if (config.showAuthorAvatar && parsed.avatar) {
-    const prefix = config.showAuthorAvatarText ? config.authorAvatarText || '作者头像：' : ''
-    addImage('avatar', '作者头像', prefix, parsed.avatar, config.showAuthorAvatarFile)
+    addImage('avatar', '作者头像', appendAvatarHint ? '' : avatarHint, parsed.avatar, config.showAuthorAvatarFile)
   }
 
-  if (config.showCoverImage && parsed.cover && parsed.type !== 'live_photo' && parsed.type !== 'image') {
+  if (config.showCoverImage && parsed.cover && parsed.type !== 'image' && !parsed.live_photo?.length) {
     const prefix = config.showCoverText ? config.coverText || '封面：' : ''
     addImage('cover', '封面', prefix, parsed.cover, config.showCoverFile)
   }
@@ -120,14 +132,13 @@ export function buildSendPlan(parsed: ParsedData, config: SendPlanConfig, text: 
     addImage('musicCover', '音乐封面', prefix, parsed.music.cover, true)
   }
 
-  if (parsed.type === 'live_photo' && parsed.live_photo?.length) {
-    for (const livePhoto of parsed.live_photo) addImage('image', '图片', '', livePhoto.image, config.showImageFileNew)
-  } else if (parsed.type === 'image') {
-    const imageUrls = parsed.images?.length ? parsed.images : (parsed.live_photo?.map(livePhoto => livePhoto.image) ?? [])
+  const livePhotos = parsed.live_photo ?? []
+  if (parsed.type === 'image' || parsed.type === 'live_photo' || livePhotos.length) {
+    const imageUrls = parsed.images?.length ? parsed.images : livePhotos.map(livePhoto => livePhoto.image).filter(Boolean)
     for (const imageUrl of imageUrls) addImage('image', '图片', '', imageUrl, config.showImageFileNew)
   }
 
-  if (parsed.video && parsed.type !== 'live_photo' && config.showVideo !== false) {
+  if (hasPlayableVideo(parsed) && config.showVideo !== false) {
     if (config.showVideoFile) plan.push({ kind: 'video', label: '视频', url: parsed.video, mediaType: 'video' })
     else plan.push({ kind: 'video', label: '视频', text: `视频链接：${parsed.video}` })
   }
@@ -138,5 +149,6 @@ export function buildSendPlan(parsed: ParsedData, config: SendPlanConfig, text: 
     else plan.push({ kind: 'audio', label: '音乐', text: `音乐链接：${musicUrl}` })
   }
 
+  separateAdjacentText(plan)
   return plan
 }
